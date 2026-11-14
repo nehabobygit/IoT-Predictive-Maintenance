@@ -1,0 +1,29 @@
+# Python virtual environment
+venv/
+.venv/
+
+# Python temporary files
+__pycache__/
+*.pyc
+
+# Environment variables and secrets
+.env
+.env.*
+
+# Local database
+*.db
+*.sqlite
+*.sqlite3
+
+# IDE files
+.vscode/
+.idea/
+
+# Logs
+*.log
+
+# Generated SKAB experiment results
+data/SKAB-master/results/
+
+# Local database
+data/sensor_readings.db
