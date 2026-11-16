@@ -1,5 +1,6 @@
 
 import sqlite3
+import pickle
 from pathlib import Path
 from flask import Flask, render_template_string, request
 
@@ -7,6 +8,7 @@ app = Flask(__name__)
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "sensor_readings.db"
+MODEL_PATH = BASE_DIR / "models" / "ai4i_random_forest.pkl"
 
 SENSORS = [
     "temperature",
@@ -36,7 +38,8 @@ PAGES = [
     ("overview", "Overview", "layout-dashboard"),
     ("sensors", "Live Sensors", "activity"),
     ("alerts", "Maintenance Alerts", "alert-triangle"),
-    ("history", "Reading History", "database")
+    ("history", "Reading History", "database"),
+    ("prediction", "Machine Failure Prediction", "brain-circuit")
 ]
 
 HTML = """
@@ -46,7 +49,7 @@ HTML = """
     <title>Industrial Predictive Maintenance</title>
 
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <meta http-equiv="refresh" content="5">
+    {% if page != "prediction" %}<meta http-equiv="refresh" content="5">{% endif %}
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
@@ -376,6 +379,134 @@ HTML = """
             text-decoration: none;
         }
 
+        .pagination {
+            display: flex;
+            flex-wrap: wrap;
+            align-items: center;
+            justify-content: space-between;
+            gap: 12px;
+            margin-top: 16px;
+            padding: 12px 15px;
+            background: white;
+            border-radius: 8px;
+            box-shadow: 0 2px 6px #dfe4e7;
+        }
+
+        .pagination-info {
+            color: #718087;
+            font-size: 12px;
+        }
+
+        .pagination-links {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .pagination-links a,
+        .pagination-links span {
+            padding: 8px 12px;
+            border-radius: 5px;
+            font-size: 12px;
+            text-decoration: none;
+        }
+
+        .pagination-links a {
+            background: #1f5e63;
+            color: white;
+        }
+
+        .pagination-links a:hover {
+            background: #174e53;
+        }
+
+        .pagination-links span {
+            color: #52636a;
+            background: #f3f6f8;
+        }
+
+        /* MACHINE FAILURE PREDICTION */
+
+        .prediction-form {
+            background: white;
+            padding: 22px;
+            border-radius: 9px;
+            box-shadow: 0 2px 6px #dfe4e7;
+            max-width: 850px;
+        }
+
+        .prediction-grid {
+            display: grid;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+            gap: 16px;
+        }
+
+        .prediction-field {
+            display: flex;
+            flex-direction: column;
+            gap: 7px;
+        }
+
+        .prediction-field label {
+            font-size: 12px;
+            font-weight: bold;
+            color: #52636a;
+        }
+
+        .prediction-field input,
+        .prediction-field select {
+            width: 100%;
+            min-width: 0;
+            padding: 11px;
+            border: 1px solid #ccd5d9;
+            border-radius: 6px;
+            background: white;
+            color: #263238;
+        }
+
+        .prediction-submit {
+            margin-top: 20px;
+            padding: 12px 20px;
+            border: none;
+            border-radius: 6px;
+            background: #1f5e63;
+            color: white;
+            font-weight: bold;
+            cursor: pointer;
+        }
+
+        .prediction-submit:hover {
+            background: #174e53;
+        }
+
+        .prediction-result {
+            margin-top: 22px;
+            padding: 20px;
+            border-radius: 9px;
+            background: #e5f0f1;
+            border-left: 4px solid #1f5e63;
+            max-width: 850px;
+        }
+
+        .prediction-result.failure {
+            background: #fff0f0;
+            border-left-color: #dc2626;
+        }
+
+        .prediction-result.normal {
+            background: #edf7f0;
+            border-left-color: #26834a;
+        }
+
+        .prediction-error {
+            margin-top: 18px;
+            padding: 14px;
+            border-radius: 7px;
+            background: #fff0f0;
+            color: #b42318;
+            font-size: 13px;
+        }
+
         /* OTHER */
 
         .severity-grid {
@@ -480,7 +611,8 @@ HTML = """
 
             .graph-grid,
             .severity-grid,
-            .detail-grid {
+            .detail-grid,
+            .prediction-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -838,6 +970,16 @@ HTML = """
                     </select>
                 </div>
 
+                <div class="filter-group">
+                    <label>Show Entries</label>
+                    <select name="alert_limit">
+                        <option value="20" {% if alert_limit == "20" %}selected{% endif %}>Latest 20</option>
+                        <option value="50" {% if alert_limit == "50" %}selected{% endif %}>Latest 50</option>
+                        <option value="100" {% if alert_limit == "100" %}selected{% endif %}>Latest 100</option>
+                        <option value="all" {% if alert_limit == "all" %}selected{% endif %}>All Entries</option>
+                    </select>
+                </div>
+
                 <button type="submit" class="filter-button">
                     Apply Filters
                 </button>
@@ -851,7 +993,8 @@ HTML = """
             <h2>Alert Results</h2>
 
             <p class="section-description">
-                Showing up to 100 most recent matching alerts.
+                Showing {{ alerts_start }}–{{ alerts_end }} of {{ alerts_total }} matching alerts.
+                {% if alert_limit == "all" %}All Entries is displayed in pages of 100 to keep the dashboard responsive.{% else %}Displaying up to {{ alert_page_size }} alerts per page.{% endif %}
             </p>
 
             {% if alerts %}
@@ -895,6 +1038,20 @@ HTML = """
 
             {% endif %}
 
+            {% if alerts_total_pages > 1 %}
+                <div class="pagination">
+                    <div class="pagination-info">Page {{ alerts_page }} of {{ alerts_total_pages }}</div>
+                    <div class="pagination-links">
+                        {% if alerts_page > 1 %}
+                            <a href="{{ url_for('dashboard', page='alerts', sensor=selected_sensor, severity=selected_severity, alert_limit=alert_limit, alert_page=alerts_page-1) }}">Previous</a>
+                        {% endif %}
+                        <span>{{ alerts_page }} / {{ alerts_total_pages }}</span>
+                        {% if alerts_page < alerts_total_pages %}
+                            <a href="{{ url_for('dashboard', page='alerts', sensor=selected_sensor, severity=selected_severity, alert_limit=alert_limit, alert_page=alerts_page+1) }}">Next</a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
 
             <h2>Understanding Severity</h2>
 
@@ -930,6 +1087,135 @@ HTML = """
             </div>
 
 
+        {% elif page == "prediction" %}
+
+            <div class="info-banner">
+                <strong>AI-based machine failure prediction:</strong>
+                Enter machine operating parameters to estimate the likelihood
+                of failure using the trained Random Forest model.
+                This model was trained on the AI4I 2020 dataset and is separate
+                from the live MQTT sensor anomaly detector.
+            </div>
+
+            <h2>Machine Operating Parameters</h2>
+
+            <p class="section-description">
+                Enter the operating values for one machine. Temperature values
+                are in Kelvin, speed in rpm, torque in Nm and tool wear in minutes.
+            </p>
+
+            <form method="POST" action="/?page=prediction" class="prediction-form">
+                <div class="prediction-grid">
+
+                    <div class="prediction-field">
+                        <label for="air_temperature">Air Temperature (K)</label>
+                        <input id="air_temperature" name="air_temperature"
+                               type="number" step="any" min="250" max="350"
+                               value="{{ prediction_input.get('air_temperature', '300') }}" required>
+                    </div>
+
+                    <div class="prediction-field">
+                        <label for="process_temperature">Process Temperature (K)</label>
+                        <input id="process_temperature" name="process_temperature"
+                               type="number" step="any" min="250" max="400"
+                               value="{{ prediction_input.get('process_temperature', '310') }}" required>
+                    </div>
+
+                    <div class="prediction-field">
+                        <label for="rotational_speed">Rotational Speed (rpm)</label>
+                        <input id="rotational_speed" name="rotational_speed"
+                               type="number" step="any" min="100" max="5000"
+                               value="{{ prediction_input.get('rotational_speed', '1500') }}" required>
+                    </div>
+
+                    <div class="prediction-field">
+                        <label for="torque">Torque (Nm)</label>
+                        <input id="torque" name="torque"
+                               type="number" step="any" min="0" max="100"
+                               value="{{ prediction_input.get('torque', '40') }}" required>
+                    </div>
+
+                    <div class="prediction-field">
+                        <label for="tool_wear">Tool Wear (minutes)</label>
+                        <input id="tool_wear" name="tool_wear"
+                               type="number" step="any" min="0" max="300"
+                               value="{{ prediction_input.get('tool_wear', '100') }}" required>
+                    </div>
+
+                    <div class="prediction-field">
+                        <label for="machine_type">Machine Type</label>
+                        <select id="machine_type" name="machine_type" required>
+                            <option value="L" {% if prediction_input.get('machine_type', 'L') == 'L' %}selected{% endif %}>L</option>
+                            <option value="M" {% if prediction_input.get('machine_type') == 'M' %}selected{% endif %}>M</option>
+                            <option value="H" {% if prediction_input.get('machine_type') == 'H' %}selected{% endif %}>H</option>
+                        </select>
+                    </div>
+
+                </div>
+
+                <button type="submit" class="prediction-submit">
+                    Predict Machine Failure
+                </button>
+            </form>
+
+            {% if prediction_result %}
+                <div class="prediction-result {{ 'failure' if prediction_result.prediction == 1 else 'normal' }}">
+                    <h2 style="margin-top: 0;">
+                        {% if prediction_result.prediction == 1 %}
+                            Failure Risk Detected
+                        {% else %}
+                            No Failure Detected
+                        {% endif %}
+                    </h2>
+
+                    <p>
+                        <strong>Model output:</strong>
+                        {{ 'Machine failure predicted' if prediction_result.prediction == 1 else 'Machine predicted as normal' }}
+                    </p>
+
+                    <p>
+                        <strong>Failure score:</strong>
+                        {{ prediction_result.score }}%
+                    </p>
+
+                    <p class="small-text">
+                        The score represents the proportion of Random Forest trees
+                        voting for failure. It is a model score, not a calibrated
+                        real-world probability or a guarantee of failure.
+                    </p>
+                </div>
+            {% endif %}
+
+            {% if prediction_error %}
+                <div class="prediction-error">{{ prediction_error }}</div>
+            {% endif %}
+
+            <h2>About This Model</h2>
+            <div class="detail-grid">
+                <div class="detail-card">
+                    <div class="card-label">Algorithm</div>
+                    <div class="detail-value">Random Forest Classifier</div>
+                </div>
+                <div class="detail-card">
+                    <div class="card-label">Training Dataset</div>
+                    <div class="detail-value">AI4I 2020 Predictive Maintenance</div>
+                </div>
+                <div class="detail-card">
+                    <div class="card-label">Held-out Test Accuracy</div>
+                    <div class="detail-value">97.80%</div>
+                </div>
+                <div class="detail-card">
+                    <div class="card-label">Held-out Test F1 Score</div>
+                    <div class="detail-value">65.26%</div>
+                </div>
+            </div>
+
+            <p class="section-description" style="margin-top: 15px;">
+                The AI4I dataset is synthetic. Model performance on this dataset
+                does not guarantee the same performance on real industrial equipment.
+            </p>
+
+
         {% elif page == "history" %}
 
             <div class="info-banner">
@@ -939,8 +1225,23 @@ HTML = """
 
             <h2>Latest Sensor Readings</h2>
 
-            <p class="section-description">
-                Showing the latest 100 records, newest first.
+            <form method="GET" action="/" class="filter-bar">
+                <input type="hidden" name="page" value="history">
+                <div class="filter-group">
+                    <label>Show Entries</label>
+                    <select name="history_limit">
+                        <option value="20" {% if history_limit == "20" %}selected{% endif %}>Latest 20</option>
+                        <option value="50" {% if history_limit == "50" %}selected{% endif %}>Latest 50</option>
+                        <option value="100" {% if history_limit == "100" %}selected{% endif %}>Latest 100</option>
+                        <option value="all" {% if history_limit == "all" %}selected{% endif %}>All Entries</option>
+                    </select>
+                </div>
+                <button type="submit" class="filter-button">Show Records</button>
+            </form>
+
+            <p class="section-description" style="margin-top: 15px;">
+                Showing {{ readings_start }}–{{ readings_end }} of {{ readings_total }} records, newest first.
+                {% if history_limit == "all" %}All Entries is displayed in pages of 100 to keep the dashboard responsive.{% else %}Displaying up to {{ readings_page_size }} records per page.{% endif %}
             </p>
 
             {% if readings %}
@@ -977,6 +1278,20 @@ HTML = """
 
             {% endif %}
 
+            {% if readings_total_pages > 1 %}
+                <div class="pagination">
+                    <div class="pagination-info">Page {{ readings_page }} of {{ readings_total_pages }}</div>
+                    <div class="pagination-links">
+                        {% if readings_page > 1 %}
+                            <a href="{{ url_for('dashboard', page='history', history_limit=history_limit, history_page=readings_page-1) }}">Previous</a>
+                        {% endif %}
+                        <span>{{ readings_page }} / {{ readings_total_pages }}</span>
+                        {% if readings_page < readings_total_pages %}
+                            <a href="{{ url_for('dashboard', page='history', history_limit=history_limit, history_page=readings_page+1) }}">Next</a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
 
         {% endif %}
 
@@ -1084,7 +1399,7 @@ HTML = """
 """
 
 
-@app.route("/")
+@app.route("/", methods=["GET", "POST"])
 def dashboard():
 
     page = request.args.get("page", "overview")
@@ -1111,10 +1426,97 @@ def dashboard():
             "Reading History",
             "Review recently stored sensor readings."
         ),
+        "prediction": (
+            "Machine Failure Prediction",
+            "Estimate machine failure risk using the trained Random Forest model."
+        )
 
     }
 
     page_title, page_description = page_details[page]
+
+    prediction_result = None
+    prediction_error = None
+    prediction_input = {}
+
+    if page == "prediction" and request.method == "POST":
+        prediction_input = request.form.to_dict()
+
+        try:
+            air = float(request.form["air_temperature"])
+            process = float(request.form["process_temperature"])
+            speed = float(request.form["rotational_speed"])
+            torque = float(request.form["torque"])
+            wear = float(request.form["tool_wear"])
+            machine_type = request.form["machine_type"]
+
+            if machine_type not in ["L", "M", "H"]:
+                raise ValueError("Please select a valid machine type.")
+
+            if not (250 <= air <= 350):
+                raise ValueError("Air temperature must be between 250 and 350 K.")
+
+            if not (250 <= process <= 400):
+                raise ValueError("Process temperature must be between 250 and 400 K.")
+
+            if not (100 <= speed <= 5000):
+                raise ValueError("Rotational speed must be between 100 and 5000 rpm.")
+
+            if not (0 <= torque <= 100):
+                raise ValueError("Torque must be between 0 and 100 Nm.")
+
+            if not (0 <= wear <= 300):
+                raise ValueError("Tool wear must be between 0 and 300 minutes.")
+
+            features = [
+                air,
+                process,
+                speed,
+                torque,
+                wear,
+                1 if machine_type == "L" else 0,
+                1 if machine_type == "M" else 0,
+                1 if machine_type == "H" else 0,
+                process - air,
+                torque * speed / 1000
+            ]
+
+            with open(MODEL_PATH, "rb") as model_file:
+                model = pickle.load(model_file)
+
+            votes = 0
+
+            for tree in model["trees"]:
+                node = tree
+
+                while node["feature"] is not None:
+                    if features[node["feature"]] <= node["threshold"]:
+                        node = node["left"]
+                    else:
+                        node = node["right"]
+
+                votes += int(node["prediction"])
+
+            failure_score = votes / len(model["trees"])
+            predicted_class = int(failure_score >= model["threshold"])
+
+            prediction_result = {
+                "prediction": predicted_class,
+                "score": round(failure_score * 100, 2)
+            }
+
+        except FileNotFoundError:
+            prediction_error = (
+                "The trained model file was not found. Check that "
+                "models/ai4i_random_forest.pkl exists."
+            )
+        except (ValueError, KeyError, ZeroDivisionError) as error:
+            prediction_error = str(error) or "Unable to calculate a prediction."
+        except Exception as error:
+            prediction_error = (
+                "The model could not generate a prediction. "
+                "Check the saved model file. Details: " + str(error)
+            )
 
     with sqlite3.connect(DB_PATH) as conn:
 
@@ -1131,16 +1533,34 @@ def dashboard():
 
         graph_readings = cursor.fetchall()
 
-        # Latest 100 readings for the history page
+        # Reading history uses a bounded page size, including All Entries.
+        history_limit = request.args.get("history_limit", "100")
+        if history_limit not in ["20", "50", "100", "all"]:
+            history_limit = "100"
+
+        history_page_size = 100 if history_limit == "all" else int(history_limit)
+        try:
+            readings_page = max(1, int(request.args.get("history_page", "1")))
+        except ValueError:
+            readings_page = 1
+
+        cursor.execute("SELECT COUNT(*) FROM sensor_readings")
+        readings_total = cursor.fetchone()[0]
+        readings_total_pages = max(1, (readings_total + history_page_size - 1) // history_page_size)
+        readings_page = min(readings_page, readings_total_pages)
+        readings_offset = (readings_page - 1) * history_page_size
+
         cursor.execute("""
             SELECT timestamp, temperature, vibration,
                    humidity, pressure, current
             FROM sensor_readings
             ORDER BY id DESC
-            LIMIT 100
-        """)
+            LIMIT ? OFFSET ?
+        """, (history_page_size, readings_offset))
 
         readings = cursor.fetchall()
+        readings_start = readings_offset + 1 if readings_total else 0
+        readings_end = min(readings_offset + len(readings), readings_total)
 
         latest = {}
 
@@ -1232,10 +1652,40 @@ def dashboard():
             alert_query += " AND severity = ?"
             parameters.append(selected_severity)
 
-        alert_query += " ORDER BY id DESC LIMIT 100"
+        alert_limit = request.args.get("alert_limit", "100")
+        if alert_limit not in ["20", "50", "100", "all"]:
+            alert_limit = "100"
+
+        alert_page_size = 100 if alert_limit == "all" else int(alert_limit)
+        try:
+            alerts_page = max(1, int(request.args.get("alert_page", "1")))
+        except ValueError:
+            alerts_page = 1
+
+        count_query = "SELECT COUNT(*) FROM alerts WHERE 1 = 1"
+        count_parameters = []
+
+        if selected_sensor != "all":
+            count_query += " AND sensor = ?"
+            count_parameters.append(selected_sensor)
+
+        if selected_severity != "all":
+            count_query += " AND severity = ?"
+            count_parameters.append(selected_severity)
+
+        cursor.execute(count_query, count_parameters)
+        alerts_total = cursor.fetchone()[0]
+        alerts_total_pages = max(1, (alerts_total + alert_page_size - 1) // alert_page_size)
+        alerts_page = min(alerts_page, alerts_total_pages)
+        alerts_offset = (alerts_page - 1) * alert_page_size
+
+        alert_query += " ORDER BY id DESC LIMIT ? OFFSET ?"
+        parameters.extend([alert_page_size, alerts_offset])
 
         cursor.execute(alert_query, parameters)
         alerts = cursor.fetchall()
+        alerts_start = alerts_offset + 1 if alerts_total else 0
+        alerts_end = min(alerts_offset + len(alerts), alerts_total)
 
 
 
@@ -1253,10 +1703,27 @@ def dashboard():
         alert_counts=alert_counts,
         readings=readings,
         alerts=alerts,
+        history_limit=history_limit,
+        history_page_size=history_page_size,
+        readings_page=readings_page,
+        readings_total=readings_total,
+        readings_total_pages=readings_total_pages,
+        readings_start=readings_start,
+        readings_end=readings_end,
+        alert_limit=alert_limit,
+        alert_page_size=alert_page_size,
+        alerts_page=alerts_page,
+        alerts_total=alerts_total,
+        alerts_total_pages=alerts_total_pages,
+        alerts_start=alerts_start,
+        alerts_end=alerts_end,
         timestamps=timestamps,
         sensor_data=sensor_data,
         selected_sensor=selected_sensor,
-        selected_severity=selected_severity
+        selected_severity=selected_severity,
+        prediction_result=prediction_result,
+        prediction_error=prediction_error,
+        prediction_input=prediction_input
     )
 
 
