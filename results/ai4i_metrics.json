@@ -1,0 +1,25 @@
+{
+    "dataset": "AI4I 2020 Predictive Maintenance Dataset",
+    "evaluation": "Held-out test set",
+    "total_records": 10000,
+    "training_records": 6999,
+    "validation_records": 1500,
+    "test_records": 1501,
+    "test_failures": 51,
+    "test_normal": 1450,
+    "model_type": "random_forest",
+    "number_of_trees": 25,
+    "decision_threshold": 0.7600000000000001,
+    "confusion_matrix": {
+        "true_positives": 31,
+        "false_positives": 13,
+        "false_negatives": 20,
+        "true_negatives": 1437
+    },
+    "metrics": {
+        "accuracy": 0.978014656895403,
+        "precision": 0.7045454545454546,
+        "recall": 0.6078431372549019,
+        "f1_score": 0.6526315789473683
+    }
+}
