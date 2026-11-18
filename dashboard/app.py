@@ -1,4 +1,3 @@
-
 import sqlite3
 import pickle
 from pathlib import Path
@@ -39,7 +38,8 @@ PAGES = [
     ("sensors", "Live Sensors", "activity"),
     ("alerts", "Maintenance Alerts", "alert-triangle"),
     ("history", "Reading History", "database"),
-    ("prediction", "Machine Failure Prediction", "brain-circuit")
+    ("prediction", "Machine Failure Prediction", "brain-circuit"),
+    ("ai4i_replay", "Replay Prediction Results", "chart-no-axes-combined")
 ]
 
 HTML = """
@@ -322,6 +322,26 @@ HTML = """
 
         .LOW {
             color: #b8860b;
+            font-weight: bold;
+        }
+
+        .normal-text {
+            color: #26834a;
+            font-weight: bold;
+        }
+
+        .failure-text {
+            color: #dc2626;
+            font-weight: bold;
+        }
+
+        .correct-text {
+            color: #26834a;
+            font-weight: bold;
+        }
+
+        .incorrect-text {
+            color: #dc2626;
             font-weight: bold;
         }
 
@@ -1216,6 +1236,211 @@ HTML = """
             </p>
 
 
+        {% elif page == "ai4i_replay" %}
+
+            <div class="info-banner">
+                <strong>Replay prediction results:</strong>
+                This page displays machine-failure predictions generated when
+                records from the AI4I 2020 dataset are replayed through MQTT.
+                These are simulated dataset records, not readings from physical
+                factory equipment. The actual outcome is available because the
+                replay dataset includes a known failure label.
+            </div>
+
+            <h2>Latest Replay Performance</h2>
+
+            <p class="section-description">
+                These metrics cover only the most recent replay run, identified by its starting UDI 1 record.
+                The timestamps below show the replay interval.
+            </p>
+
+            <div class="summary-grid">
+                <div class="card summary-card">
+                    <div class="card-label">Latest Run Records</div>
+                    <div class="summary-number">{{ latest_prediction_metrics["total"] }}</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">Latest Run Accuracy</div>
+                    <div class="summary-number">{{ latest_prediction_metrics["accuracy"] }}%</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">Correct Predictions</div>
+                    <div class="summary-number normal-text">{{ latest_prediction_metrics["correct"] }}</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">Incorrect Predictions</div>
+                    <div class="summary-number high-text">{{ latest_prediction_metrics["incorrect"] }}</div>
+                </div>
+            </div>
+
+            <p class="section-description" style="margin-top: 12px;">
+                Replay interval: {{ latest_prediction_metrics["start_timestamp"] or "Not available" }}
+                to {{ latest_prediction_metrics["end_timestamp"] or "Not available" }}.
+            </p>
+
+            <h2>Latest Replay Confusion Matrix</h2>
+
+            <div class="summary-grid">
+                <div class="card summary-card">
+                    <div class="card-label">True Positives</div>
+                    <div class="summary-number">{{ latest_prediction_metrics["true_positives"] }}</div>
+                    <div class="small-text">Failure correctly predicted</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">False Positives</div>
+                    <div class="summary-number high-text">{{ latest_prediction_metrics["false_positives"] }}</div>
+                    <div class="small-text">Normal record predicted as failure</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">False Negatives</div>
+                    <div class="summary-number high-text">{{ latest_prediction_metrics["false_negatives"] }}</div>
+                    <div class="small-text">Failure missed by the model</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">True Negatives</div>
+                    <div class="summary-number">{{ latest_prediction_metrics["true_negatives"] }}</div>
+                    <div class="small-text">Normal record correctly predicted</div>
+                </div>
+            </div>
+
+            <h2>Overall Replay Performance (All Runs)</h2>
+
+            <p class="section-description">
+                Results below combine every AI4I replay run currently saved in the database.
+            </p>
+
+            <div class="summary-grid">
+                <div class="card summary-card">
+                    <div class="card-label">Total Replay Records</div>
+                    <div class="summary-number">{{ prediction_metrics["total"] }}</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">Replay Accuracy</div>
+                    <div class="summary-number">{{ prediction_metrics["accuracy"] }}%</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">Correct Predictions</div>
+                    <div class="summary-number normal-text">{{ prediction_metrics["correct"] }}</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">Incorrect Predictions</div>
+                    <div class="summary-number high-text">{{ prediction_metrics["incorrect"] }}</div>
+                </div>
+            </div>
+
+            <h2>Overall Confusion Matrix (All Runs)</h2>
+
+            <div class="summary-grid">
+                <div class="card summary-card">
+                    <div class="card-label">True Positives</div>
+                    <div class="summary-number">{{ prediction_metrics["true_positives"] }}</div>
+                    <div class="small-text">Failure correctly predicted</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">False Positives</div>
+                    <div class="summary-number high-text">{{ prediction_metrics["false_positives"] }}</div>
+                    <div class="small-text">Normal record predicted as failure</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">False Negatives</div>
+                    <div class="summary-number high-text">{{ prediction_metrics["false_negatives"] }}</div>
+                    <div class="small-text">Failure missed by the model</div>
+                </div>
+                <div class="card summary-card">
+                    <div class="card-label">True Negatives</div>
+                    <div class="summary-number">{{ prediction_metrics["true_negatives"] }}</div>
+                    <div class="small-text">Normal record correctly predicted</div>
+                </div>
+            </div>
+
+            <h2>All Replay Prediction History</h2>
+
+            <p class="section-description">
+                This table contains records from all replay runs, newest first.
+            </p>
+
+            <form method="GET" action="/" class="filter-bar">
+                <input type="hidden" name="page" value="ai4i_replay">
+                <div class="filter-group">
+                    <label>Show Entries</label>
+                    <select name="prediction_limit">
+                        <option value="20" {% if prediction_limit == "20" %}selected{% endif %}>Latest 20</option>
+                        <option value="50" {% if prediction_limit == "50" %}selected{% endif %}>Latest 50</option>
+                        <option value="100" {% if prediction_limit == "100" %}selected{% endif %}>Latest 100</option>
+                        <option value="all" {% if prediction_limit == "all" %}selected{% endif %}>All Entries</option>
+                    </select>
+                </div>
+                <button type="submit" class="filter-button">Show Records</button>
+            </form>
+
+            <p class="section-description" style="margin-top: 15px;">
+                Showing {{ predictions_start }}–{{ predictions_end }} of {{ predictions_total }} records, newest first.
+                {% if prediction_limit == "all" %}All Entries is displayed in pages of 100 to keep the dashboard responsive.{% else %}Displaying up to {{ predictions_page_size }} records per page.{% endif %}
+            </p>
+
+            {% if prediction_history %}
+                <div class="table-container">
+                    <table>
+                        <tr>
+                            <th>Timestamp</th>
+                            <th>UDI</th>
+                            <th>Product ID</th>
+                            <th>Machine Type</th>
+                            <th>Failure Score</th>
+                            <th>Threshold</th>
+                            <th>Predicted</th>
+                            <th>Actual</th>
+                            <th>Result</th>
+                        </tr>
+                        {% for record in prediction_history %}
+                            <tr>
+                                <td>{{ record[0] }}</td>
+                                <td>{{ record[1] }}</td>
+                                <td>{{ record[2] }}</td>
+                                <td>{{ record[3] }}</td>
+                                <td>{{ "%.2f"|format(record[4] * 100) }}%</td>
+                                <td>{{ "%.2f"|format(record[5] * 100) }}%</td>
+                                <td class="{{ 'failure-text' if record[6] == 1 else 'normal-text' }}">
+                                    {{ "FAILURE" if record[6] == 1 else "NORMAL" }}
+                                </td>
+                                <td class="{{ 'failure-text' if record[7] == 1 else 'normal-text' }}">
+                                    {{ "FAILURE" if record[7] == 1 else "NORMAL" }}
+                                </td>
+                                <td class="{{ 'correct-text' if record[8] == 1 else 'incorrect-text' }}">
+                                    {{ "CORRECT" if record[8] == 1 else "INCORRECT" }}
+                                </td>
+                            </tr>
+                        {% endfor %}
+                    </table>
+                </div>
+            {% else %}
+                <div class="empty-message">
+                    No replay predictions are available yet. Start the MQTT consumer,
+                    then run messaging/ai4i_replay_publisher.py to send dataset records.
+                </div>
+            {% endif %}
+
+            {% if predictions_total_pages > 1 %}
+                <div class="pagination">
+                    <div class="pagination-info">Page {{ predictions_page }} of {{ predictions_total_pages }}</div>
+                    <div class="pagination-links">
+                        {% if predictions_page > 1 %}
+                            <a href="{{ url_for('dashboard', page='ai4i_replay', prediction_limit=prediction_limit, prediction_page=predictions_page-1) }}">Previous</a>
+                        {% endif %}
+                        <span>{{ predictions_page }} / {{ predictions_total_pages }}</span>
+                        {% if predictions_page < predictions_total_pages %}
+                            <a href="{{ url_for('dashboard', page='ai4i_replay', prediction_limit=prediction_limit, prediction_page=predictions_page+1) }}">Next</a>
+                        {% endif %}
+                    </div>
+                </div>
+            {% endif %}
+
+            <p class="section-description" style="margin-top: 15px;">
+                The failure score is the proportion of Random Forest trees voting for failure;
+                it is not a calibrated real-world probability. Replay accuracy describes only
+                the records currently stored from the AI4I dataset and is not the model's held-out test accuracy.
+            </p>
+
         {% elif page == "history" %}
 
             <div class="info-banner">
@@ -1241,7 +1466,7 @@ HTML = """
 
             <p class="section-description" style="margin-top: 15px;">
                 Showing {{ readings_start }}–{{ readings_end }} of {{ readings_total }} records, newest first.
-                {% if history_limit == "all" %}All Entries is displayed in pages of 100 to keep the dashboard responsive.{% else %}Displaying up to {{ readings_page_size }} records per page.{% endif %}
+                {% if history_limit == "all" %}All Entries is displayed in pages of 100 to keep the dashboard responsive.{% else %}Displaying up to {{ history_page_size }} records per page.{% endif %}
             </p>
 
             {% if readings %}
@@ -1429,6 +1654,10 @@ def dashboard():
         "prediction": (
             "Machine Failure Prediction",
             "Estimate machine failure risk using the trained Random Forest model."
+        ),
+        "ai4i_replay": (
+            "Machine Failure Prediction – Replay Results",
+            "Review machine-failure predictions generated from replayed machine-operation records."
         )
 
     }
@@ -1498,7 +1727,8 @@ def dashboard():
                 votes += int(node["prediction"])
 
             failure_score = votes / len(model["trees"])
-            predicted_class = int(failure_score >= model["threshold"])
+            decision_threshold = round(float(model["threshold"]), 2)
+            predicted_class = int(failure_score >= decision_threshold)
 
             prediction_result = {
                 "prediction": predicted_class,
@@ -1688,6 +1918,171 @@ def dashboard():
         alerts_end = min(alerts_offset + len(alerts), alerts_total)
 
 
+        # AI4I replay prediction summary and paginated history.
+        prediction_limit = request.args.get("prediction_limit", "100")
+        if prediction_limit not in ["20", "50", "100", "all"]:
+            prediction_limit = "100"
+
+        predictions_page_size = 100 if prediction_limit == "all" else int(prediction_limit)
+        try:
+            predictions_page = max(1, int(request.args.get("prediction_page", "1")))
+        except ValueError:
+            predictions_page = 1
+
+        prediction_metrics = {
+            "total": 0,
+            "correct": 0,
+            "incorrect": 0,
+            "accuracy": 0.0,
+            "true_positives": 0,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "true_negatives": 0
+        }
+        latest_prediction_metrics = {
+            "total": 0,
+            "correct": 0,
+            "incorrect": 0,
+            "accuracy": 0.0,
+            "true_positives": 0,
+            "false_positives": 0,
+            "false_negatives": 0,
+            "true_negatives": 0,
+            "start_timestamp": None,
+            "end_timestamp": None
+        }
+        prediction_history = []
+        predictions_total = 0
+        predictions_total_pages = 1
+        predictions_start = 0
+        predictions_end = 0
+
+        cursor.execute("""
+            SELECT name
+            FROM sqlite_master
+            WHERE type = 'table' AND name = 'predictions'
+        """)
+        predictions_table_exists = cursor.fetchone() is not None
+
+        if predictions_table_exists:
+            cursor.execute("""
+                SELECT
+                    COUNT(*),
+                    COALESCE(SUM(correct), 0),
+                    COALESCE(SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN predicted_failure = 1 AND actual_failure = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN predicted_failure = 1 AND actual_failure = 0 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN predicted_failure = 0 AND actual_failure = 1 THEN 1 ELSE 0 END), 0),
+                    COALESCE(SUM(CASE WHEN predicted_failure = 0 AND actual_failure = 0 THEN 1 ELSE 0 END), 0)
+                FROM predictions
+            """)
+
+            (
+                prediction_total_count,
+                prediction_correct_count,
+                prediction_incorrect_count,
+                prediction_true_positives,
+                prediction_false_positives,
+                prediction_false_negatives,
+                prediction_true_negatives
+            ) = cursor.fetchone()
+
+            prediction_accuracy = (
+                round(prediction_correct_count / prediction_total_count * 100, 2)
+                if prediction_total_count else 0.0
+            )
+
+            prediction_metrics = {
+                "total": prediction_total_count,
+                "correct": prediction_correct_count,
+                "incorrect": prediction_incorrect_count,
+                "accuracy": prediction_accuracy,
+                "true_positives": prediction_true_positives,
+                "false_positives": prediction_false_positives,
+                "false_negatives": prediction_false_negatives,
+                "true_negatives": prediction_true_negatives
+            }
+
+            cursor.execute("SELECT MAX(id) FROM predictions WHERE udi = 1")
+            latest_replay_start_id = cursor.fetchone()[0]
+
+            if latest_replay_start_id is not None:
+                cursor.execute("""
+                    SELECT
+                        COUNT(*),
+                        COALESCE(SUM(correct), 0),
+                        COALESCE(SUM(CASE WHEN correct = 0 THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN predicted_failure = 1 AND actual_failure = 1 THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN predicted_failure = 1 AND actual_failure = 0 THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN predicted_failure = 0 AND actual_failure = 1 THEN 1 ELSE 0 END), 0),
+                        COALESCE(SUM(CASE WHEN predicted_failure = 0 AND actual_failure = 0 THEN 1 ELSE 0 END), 0),
+                        MIN(timestamp),
+                        MAX(timestamp)
+                    FROM predictions
+                    WHERE id >= ?
+                """, (latest_replay_start_id,))
+
+                (
+                    latest_total,
+                    latest_correct,
+                    latest_incorrect,
+                    latest_true_positives,
+                    latest_false_positives,
+                    latest_false_negatives,
+                    latest_true_negatives,
+                    latest_start_timestamp,
+                    latest_end_timestamp
+                ) = cursor.fetchone()
+
+                latest_accuracy = (
+                    round(latest_correct / latest_total * 100, 2)
+                    if latest_total else 0.0
+                )
+
+                latest_prediction_metrics = {
+                    "total": latest_total,
+                    "correct": latest_correct,
+                    "incorrect": latest_incorrect,
+                    "accuracy": latest_accuracy,
+                    "true_positives": latest_true_positives,
+                    "false_positives": latest_false_positives,
+                    "false_negatives": latest_false_negatives,
+                    "true_negatives": latest_true_negatives,
+                    "start_timestamp": latest_start_timestamp,
+                    "end_timestamp": latest_end_timestamp
+                }
+
+            predictions_total = prediction_total_count
+            predictions_total_pages = max(
+                1,
+                (predictions_total + predictions_page_size - 1) // predictions_page_size
+            )
+            predictions_page = min(predictions_page, predictions_total_pages)
+            predictions_offset = (predictions_page - 1) * predictions_page_size
+
+            cursor.execute("""
+                SELECT
+                    timestamp,
+                    udi,
+                    product_id,
+                    machine_type,
+                    failure_score,
+                    threshold,
+                    predicted_failure,
+                    actual_failure,
+                    correct
+                FROM predictions
+                ORDER BY id DESC
+                LIMIT ? OFFSET ?
+            """, (predictions_page_size, predictions_offset))
+
+            prediction_history = cursor.fetchall()
+            predictions_start = predictions_offset + 1 if predictions_total else 0
+            predictions_end = min(
+                predictions_offset + len(prediction_history),
+                predictions_total
+            )
+
 
     return render_template_string(
         HTML,
@@ -1723,7 +2118,17 @@ def dashboard():
         selected_severity=selected_severity,
         prediction_result=prediction_result,
         prediction_error=prediction_error,
-        prediction_input=prediction_input
+        prediction_input=prediction_input,
+        prediction_metrics=prediction_metrics,
+        latest_prediction_metrics=latest_prediction_metrics,
+        prediction_history=prediction_history,
+        prediction_limit=prediction_limit,
+        predictions_page_size=predictions_page_size,
+        predictions_page=predictions_page,
+        predictions_total=predictions_total,
+        predictions_total_pages=predictions_total_pages,
+        predictions_start=predictions_start,
+        predictions_end=predictions_end
     )
 
 
