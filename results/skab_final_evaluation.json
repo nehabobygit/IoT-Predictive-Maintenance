@@ -1,0 +1,187 @@
+{
+    "dataset": "SKAB valve1",
+    "validation_files": [
+        15,
+        4
+    ],
+    "test_files": [
+        0,
+        3,
+        11
+    ],
+    "warmup_excluded_per_file": 100,
+    "rolling_configuration": {
+        "window": 10,
+        "threshold": 1.5
+    },
+    "reference_configuration": {
+        "baseline": 100,
+        "window": 30,
+        "threshold": 5
+    },
+    "per_file": {
+        "0.csv": {
+            "calibration_anomalies": 0,
+            "rolling_z": {
+                "TP": 266,
+                "FP": 380,
+                "FN": 135,
+                "TN": 266,
+                "precision": 0.4117647058823529,
+                "recall": 0.6633416458852868,
+                "f1": 0.5081184336198663,
+                "accuracy": 0.5081184336198663,
+                "false_positive_rate": 0.5882352941176471,
+                "false_positives_per_1000_readings": 362.9417382999045,
+                "detected_episodes": 1,
+                "missed_episodes": 0,
+                "mean_detection_delay_samples": 0.0,
+                "detection_delays_samples": [
+                    0
+                ]
+            },
+            "fixed_reference": {
+                "TP": 401,
+                "FP": 493,
+                "FN": 0,
+                "TN": 153,
+                "precision": 0.44854586129753915,
+                "recall": 1.0,
+                "f1": 0.6193050193050194,
+                "accuracy": 0.5291308500477555,
+                "false_positive_rate": 0.7631578947368421,
+                "false_positives_per_1000_readings": 470.8691499522445,
+                "detected_episodes": 1,
+                "missed_episodes": 0,
+                "mean_detection_delay_samples": 0.0,
+                "detection_delays_samples": [
+                    0
+                ]
+            }
+        },
+        "3.csv": {
+            "calibration_anomalies": 0,
+            "rolling_z": {
+                "TP": 226,
+                "FP": 385,
+                "FN": 178,
+                "TN": 259,
+                "precision": 0.3698854337152209,
+                "recall": 0.5594059405940595,
+                "f1": 0.44532019704433495,
+                "accuracy": 0.4627862595419847,
+                "false_positive_rate": 0.5978260869565217,
+                "false_positives_per_1000_readings": 367.36641221374043,
+                "detected_episodes": 1,
+                "missed_episodes": 0,
+                "mean_detection_delay_samples": 2.0,
+                "detection_delays_samples": [
+                    2
+                ]
+            },
+            "fixed_reference": {
+                "TP": 0,
+                "FP": 0,
+                "FN": 404,
+                "TN": 644,
+                "precision": 0.0,
+                "recall": 0.0,
+                "f1": 0.0,
+                "accuracy": 0.6145038167938931,
+                "false_positive_rate": 0.0,
+                "false_positives_per_1000_readings": 0.0,
+                "detected_episodes": 0,
+                "missed_episodes": 1,
+                "mean_detection_delay_samples": null,
+                "detection_delays_samples": []
+            }
+        },
+        "11.csv": {
+            "calibration_anomalies": 0,
+            "rolling_z": {
+                "TP": 233,
+                "FP": 368,
+                "FN": 166,
+                "TN": 274,
+                "precision": 0.3876871880199667,
+                "recall": 0.5839598997493735,
+                "f1": 0.466,
+                "accuracy": 0.48703170028818443,
+                "false_positive_rate": 0.573208722741433,
+                "false_positives_per_1000_readings": 353.50624399615754,
+                "detected_episodes": 1,
+                "missed_episodes": 0,
+                "mean_detection_delay_samples": 0.0,
+                "detection_delays_samples": [
+                    0
+                ]
+            },
+            "fixed_reference": {
+                "TP": 10,
+                "FP": 173,
+                "FN": 389,
+                "TN": 469,
+                "precision": 0.0546448087431694,
+                "recall": 0.02506265664160401,
+                "f1": 0.03436426116838488,
+                "accuracy": 0.4601344860710855,
+                "false_positive_rate": 0.26947040498442365,
+                "false_positives_per_1000_readings": 166.18635926993275,
+                "detected_episodes": 1,
+                "missed_episodes": 0,
+                "mean_detection_delay_samples": 222.0,
+                "detection_delays_samples": [
+                    222
+                ]
+            }
+        }
+    },
+    "overall": {
+        "rolling_z": {
+            "TP": 725,
+            "FP": 1133,
+            "FN": 479,
+            "TN": 799,
+            "precision": 0.39020452099031216,
+            "recall": 0.6021594684385382,
+            "f1": 0.47354670150228606,
+            "accuracy": 0.48596938775510207,
+            "false_positive_rate": 0.5864389233954451,
+            "false_positives_per_1000_readings": 361.28826530612247,
+            "detected_episodes": 3,
+            "missed_episodes": 0,
+            "mean_detection_delay_samples": 0.6666666666666666,
+            "detection_delays_samples": [
+                0,
+                2,
+                0
+            ]
+        },
+        "fixed_reference": {
+            "TP": 411,
+            "FP": 666,
+            "FN": 793,
+            "TN": 1266,
+            "precision": 0.3816155988857939,
+            "recall": 0.34136212624584716,
+            "f1": 0.36036825953529156,
+            "accuracy": 0.5347576530612245,
+            "false_positive_rate": 0.3447204968944099,
+            "false_positives_per_1000_readings": 212.37244897959184,
+            "detected_episodes": 2,
+            "missed_episodes": 1,
+            "mean_detection_delay_samples": 111.0,
+            "detection_delays_samples": [
+                0,
+                222
+            ]
+        }
+    },
+    "limitations": [
+        "Test files were used in earlier project experiments.",
+        "Results measure point-level detection before alert cooldown.",
+        "Detection delay is measured in samples, not seconds.",
+        "Fixed reference requires a healthy calibration period.",
+        "Results do not establish industrial deployment readiness."
+    ]
+}

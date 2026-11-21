@@ -1,5 +1,5 @@
 import unittest
-from detection_engine import (
+from detection.detection_engine import (
     calculate_z_score,
     classify_severity,
     ALERT_COOLDOWN

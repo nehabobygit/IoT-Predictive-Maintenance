@@ -15,7 +15,7 @@ SENSORS = [
 ]
 
 WINDOW = 10
-Z_THRESHOLD = 2.5
+Z_THRESHOLD = 1.5
 
 
 def classify_severity(z_score):

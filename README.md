@@ -1,115 +1,338 @@
+
 # IoT-Based Predictive Maintenance System
 
-## Project Overview
+## 1. Project Overview
 
-This project is an IoT-based predictive maintenance prototype designed to monitor industrial equipment using simulated sensor data, detect unusual operating behaviour and support maintenance decision-making.
+This project is an IoT-based predictive maintenance prototype designed to monitor industrial equipment, detect abnormal sensor behaviour, generate maintenance alerts and support machine-failure prediction.
 
-The system collects readings from five simulated sensors, transmits them using MQTT, detects anomalies using rolling Z-score analysis, stores readings and alerts in an SQLite database, and displays the results through a Flask-based web dashboard.
+The system combines:
 
-It also includes a separate machine-failure classification module developed using a custom NumPy-based Random Forest model trained on the AI4I 2020 Predictive Maintenance dataset.
+- IoT sensor simulation
+- MQTT-based communication
+- Real-time anomaly detection
+- SQLite database storage
+- Flask-based monitoring dashboard
+- Maintenance alert management
+- Machine-learning-based failure classification
+- Dataset replay and performance evaluation
 
-## Features
+The project is intended for academic research and demonstration. It has not been validated for production deployment in an industrial environment.
 
-### 1. IoT Sensor Monitoring
-- Monitoring of five simulated sensor parameters:
-  - Temperature
-  - Vibration
-  - Humidity
-  - Pressure
-  - Current
-- Continuous sensor-data generation.
-- Simulated normal readings and fault-like changes.
-- MQTT-based communication between the publisher and consumer.
+---
 
-### 2. Anomaly Detection
-- Rolling statistical anomaly detection using Z-score analysis.
-- Detection of unusual sensor behaviour.
-- High, Medium and Low severity classification.
-- Maintenance recommendations for detected anomalies.
-- A 30-second alert cooldown for each sensor and severity level.
+## 2. Project Objectives
 
-### 3. Web Dashboard
-- Overview of sensor readings and system activity.
-- Live sensor monitoring.
-- Maintenance alerts with severity information.
-- Historical reading records.
-- Interactive graphs and visualisations.
-- Filtering and pagination for alerts and reading history.
-- Automatic dashboard refresh.
+1. Monitor industrial equipment using multiple sensor readings.
+2. Detect abnormal operating conditions using statistical methods.
+3. Generate maintenance alerts with severity levels.
+4. Provide a dashboard for monitoring equipment conditions.
+5. Support maintenance acknowledgement and status tracking.
+6. Predict machine failures using a trained machine-learning model.
+7. Evaluate detection performance using benchmark datasets.
+8. Maintain traceable sensor events and prediction records.
 
-### 4. Machine-Failure Prediction
-- Custom NumPy-based Random Forest classifier.
-- Trained using the AI4I 2020 Predictive Maintenance dataset.
-- Uses machine parameters to classify normal or potential failure conditions.
-- Manual input through the Machine Failure Prediction dashboard page.
-- Displays the failure score based on the proportion of trees voting for failure.
+---
 
-### 5. Dataset Replay
-- SKAB dataset used for evaluating anomaly detection.
-- Sensor readings from selected SKAB records can be replayed through the MQTT pipeline for testing.
+## 3. System Architecture
 
-## Technologies Used
+### A. Live Sensor Monitoring
+
+```text
+Five Simulated Sensors
+         |
+         v
+    MQTT Publisher
+         |
+         v
+   Mosquitto Broker
+         |
+         v
+    MQTT Consumer
+         |
+         v
+  Anomaly Detection
+         |
+         v
+    SQLite Database
+         |
+         v
+    Flask Dashboard
+         |
+         v
+ Maintenance Actions
+```
+
+The five monitored parameters are:
+
+| Sensor | Unit |
+|---|---|
+| Temperature | °C |
+| Vibration | mm/s |
+| Humidity | % |
+| Pressure | bar |
+| Current | A |
+
+The simulated publisher generates sensor readings and introduces abnormal conditions to test the monitoring system.
+
+### B. Machine-Failure Prediction
+
+```text
+AI4I 2020 Dataset
+        |
+        v
+ Data Preprocessing
+        |
+        v
+Feature Engineering
+        |
+        v
+Random Forest Model
+        |
+        v
+ Failure Probability
+        |
+        v
+Normal / Failure Decision
+```
+
+The machine-learning prediction module uses AI4I machine operating parameters.
+
+The AI4I prediction workflow and the five-sensor monitoring workflow are separate. They do not currently form one unified industrial prediction model.
+
+---
+
+## 4. Technologies Used
 
 | Technology | Purpose |
 |---|---|
-| Python | Main programming language and application logic |
-| NumPy | Numerical processing and custom machine-learning implementation |
-| Flask | Web application and dashboard |
-| MQTT / Mosquitto | Sensor-data communication |
-| Paho-MQTT | Python MQTT client |
-| SQLite | Storage of sensor readings and alerts |
-| Plotly | Interactive graphs and visualisations |
-| HTML and CSS | Dashboard interface |
+| Python 3.12.10 | Application development |
+| Flask 3.1.3 | Web dashboard |
+| Paho-MQTT 2.2.0 | MQTT communication |
+| Mosquitto | MQTT message broker |
+| SQLite | Database storage |
+| NumPy 2.5.4 | Numerical computation and machine learning |
+| HTML, CSS and JavaScript | Dashboard interface |
+| Git and GitHub | Version control |
 
-The final Random Forest model is implemented using NumPy and Python rather than Scikit-learn.
+The final AI4I Random Forest model uses a custom Python and NumPy implementation.
 
-## System Architecture
+Scikit-learn is not required to load and use the final AI4I model.
 
-### Live IoT Monitoring Workflow
+### Tested Development Environment
 
-1. **Sensor Simulation:** Python generates temperature, vibration, humidity, pressure and current readings.
-2. **MQTT Publisher:** Publishes sensor readings to the MQTT topic `factory/sensors`.
-3. **MQTT Broker:** Mosquitto receives and forwards messages locally.
-4. **MQTT Consumer:** Receives readings, performs anomaly detection and prepares alert records.
-5. **SQLite Database:** Stores sensor readings and maintenance alerts.
-6. **Flask Dashboard:** Displays sensor information, alerts, historical readings and graphs.
+- Windows 10 ARM64
+- Python 3.12.10
+- Local Mosquitto MQTT broker
+- Python virtual environment
 
-### Machine-Failure Prediction Workflow
+Other operating systems and Python versions have not been fully verified.
 
-1. The AI4I 2020 dataset is used to train a custom Random Forest model.
-2. The trained model is saved as `models/ai4i_random_forest.pkl`.
-3. An engineer opens the Machine Failure Prediction page.
-4. The engineer enters the required machine parameters.
-5. The saved model evaluates the inputs and combines the votes from its decision trees.
-6. The dashboard displays the failure score and the corresponding classification.
+---
 
-**Important:** The AI4I prediction module currently operates separately from the live MQTT sensor-monitoring pipeline. Its predictions are based on manually entered machine parameters, not automatically on incoming MQTT readings.
+## 5. Sensor Simulation
 
-## Machine-Learning Model
+The system generates five sensor measurements.
+
+Typical simulated ranges:
+
+| Sensor | Normal simulation range |
+|---|---|
+| Temperature | 35–45 °C |
+| Vibration | 1–5 mm/s |
+| Humidity | 30–70% |
+| Pressure | 2–6 bar |
+| Current | 5–20 A |
+
+The simulation introduces conditions such as:
+
+- Sudden temperature spikes
+- Gradual temperature increases
+- Vibration spikes
+- Humidity drift
+- Pressure drops
+- Current surges
+
+These simulated faults are used to test the monitoring and alert pipeline.
+
+The simulated ranges are demonstration values and are not validated operating limits for a particular industrial machine.
+
+---
+
+## 6. Anomaly Detection
+
+The live monitoring system uses rolling Z-score analysis.
+
+The Z-score measures how far a sensor reading differs from the recent average relative to the standard deviation.
+
+The current configuration uses:
+
+| Parameter | Value |
+|---|---|
+| Rolling window | 10 readings |
+| Z-score threshold | 1.5 |
+| Alert cooldown | 30 seconds |
+
+An anomaly is detected when the absolute Z-score exceeds the configured threshold.
+
+### Alert Severity
+
+| Absolute Z-score | Severity |
+|---|---|
+| Below 3.5, but above detection threshold | LOW |
+| 3.5 to below 5.0 | MEDIUM |
+| 5.0 or above | HIGH |
+
+The system generates maintenance recommendations according to the affected sensor.
+
+### Important Limitation
+
+The threshold of 1.5 is an experimental configuration. It has not been established as an optimal threshold for real industrial equipment.
+
+False alarms remain a significant limitation.
+
+---
+
+## 7. MQTT Communication
+
+The monitoring system uses the following MQTT topics:
+
+| Topic | Purpose |
+|---|---|
+| `factory/sensors` | Simulated sensor measurements |
+| `factory/ai4i/replay` | AI4I dataset replay |
+
+The MQTT consumer receives incoming events, validates their contents, processes readings and stores relevant information.
+
+### Event Metadata
+
+The updated message contract supports:
+
+- Schema version
+- Event ID
+- Run ID
+- Asset ID
+- Data source
+- Event timestamp
+- Source timestamp
+- Sensor units
+- Source channel metadata
+- Synthetic-field metadata
+
+These fields improve traceability and help distinguish simulated readings from dataset replay events.
+
+Duplicate event detection is supported.
+
+### MQTT Security
+
+The project includes MQTT client security helpers for environment-based credentials.
+
+However:
+
+- Broker authentication requires separate configuration.
+- TLS encryption is not yet configured.
+- Broker access-control lists are not included in the repository.
+- The system is intended to run in a trusted local development environment.
+
+Do not expose an unsecured MQTT broker to the public internet.
+
+Do not commit passwords, authentication files or environment secrets.
+
+---
+
+## 8. Database
+
+SQLite stores monitoring and prediction information.
+
+The principal database tables include:
+
+### Sensor Readings
+
+Stores sensor values, timestamps, asset information, source information and event metadata.
+
+### Alerts
+
+Stores detected anomalies, severity, affected sensor, reading, recommendations and event metadata.
+
+### Predictions
+
+Stores AI4I machine-failure predictions, confidence scores and relevant machine information.
+
+The project also includes database migration scripts:
+
+- `detection/migrate_project_metadata.py`
+- `detection/migrate_prediction_metadata_v2.py`
+
+These scripts support the additional metadata fields introduced during development.
+
+The local SQLite database is excluded from GitHub.
+
+A fresh installation does not contain the historical monitoring data generated on the development machine.
+
+---
+
+## 9. Flask Dashboard
+
+The dashboard provides the following functionality.
+
+### Overview
+
+Displays monitoring summaries and recent sensor conditions.
+
+### Sensors
+
+Displays sensor readings and charts for temperature, vibration, humidity, pressure and current.
+
+### Alerts
+
+Displays anomaly alerts and severity information.
+
+### Reading History
+
+Displays stored sensor readings.
+
+### Prediction
+
+Allows users to enter AI4I machine parameters and obtain a failure classification.
+
+### Maintenance Management
+
+The maintenance interface supports:
+
+- Viewing maintenance alerts
+- Acknowledging alerts
+- Scheduling maintenance
+- Updating maintenance status
+- Filtering maintenance records
+- Paginated record viewing
+
+Maintenance actions use CSRF protection.
+
+### Dashboard Security Limitation
+
+The dashboard does not currently provide user login or role-based access control.
+
+It should not be exposed publicly without appropriate access protection.
+
+---
+
+## 10. AI4I Machine-Failure Prediction
+
+The machine-learning component uses the AI4I 2020 Predictive Maintenance dataset.
 
 ### Dataset
 
-**AI4I 2020 Predictive Maintenance Dataset**
-
-- Total records: 10,000
-- Normal records: 9,661
-- Failure records: 339
-
-### Model Configuration
-
-| Parameter | Configuration |
+| Property | Value |
 |---|---|
-| Algorithm | Custom Random Forest |
-| Implementation | Python and NumPy |
-| Number of trees | 25 |
-| Maximum tree depth | 8 |
-| Training strategy | Failure-class oversampling |
-| Data split | 70% training, 15% validation, 15% testing |
+| Total records | 10,000 |
+| Training records | 6,999 |
+| Validation records | 1,500 |
+| Test records | 1,501 |
+| Model | Custom Random Forest |
+| Trees | 25 |
+| Maximum depth | 8 |
 | Decision threshold | 0.76 |
 
-### Input Parameters
-
-The prediction page accepts the following six machine parameters:
+The model uses machine parameters including:
 
 - Air temperature
 - Process temperature
@@ -118,284 +341,402 @@ The prediction page accepts the following six machine parameters:
 - Tool wear
 - Machine type
 
-Additional derived features are calculated by the model during prediction.
+Additional engineered features include temperature difference and torque-speed interaction.
 
-### Prediction Interpretation
+### Test-Set Results
 
-The model calculates the proportion of decision trees voting for failure.
+| Metric | Result |
+|---|---:|
+| Accuracy | 97.80% |
+| Precision | 70.45% |
+| Recall | 60.78% |
+| F1-score | 65.26% |
+| True positives | 31 |
+| False positives | 13 |
+| False negatives | 20 |
+| True negatives | 1,437 |
 
-- Failure score below 76%: Classified as Normal.
-- Failure score at or above 76%: Classified as Failure Predicted.
+These results come from the held-out AI4I test split.
 
-The displayed score represents the proportion of tree votes, not a calibrated probability of failure.
+The model missed 20 actual failures in this test.
 
-The prediction is intended as decision support and should not be treated as a guarantee of equipment failure.
+**High accuracy does not mean that all machine failures are detected.**
 
-## Anomaly Detection
+The model predicts a binary failure classification. It does not predict remaining useful life, exact failure time or expected downtime.
 
-The live monitoring system uses rolling Z-score analysis to identify unusual changes in sensor readings.
+### Model File
 
-The Z-score is calculated using:
+`models/ai4i_random_forest.pkl`
 
-`Z = (x - μ) / σ`
+The saved model is loaded for prediction.
 
-Where:
+Python pickle files must only be loaded from trusted sources. Model integrity verification has not yet been implemented.
 
-- `x` = Current sensor reading
-- `μ` = Mean of recent readings
-- `σ` = Standard deviation of recent readings
+---
 
-The configured live detection threshold is 1.5.
+## 11. Benchmark Datasets
 
-### Alert Severity
+The project uses three datasets for different purposes.
 
-| Severity | Absolute Z-score | Recommended Action |
-|---|---|---|
-| High | 5 or above | Immediate inspection |
-| Medium | 3.5 to below 5 | Investigate the equipment |
-| Low | Above 1.5 to below 3.5 | Continue monitoring |
+### AI4I 2020
 
-A 30-second cooldown is applied separately for each sensor and severity level to reduce repeated alerts.
+Used to train and evaluate the machine-failure classification model.
 
-These thresholds are configuration values for the prototype and require further validation against industrial operating data.
+### SKAB
 
-## Project Structure
+Used to evaluate anomaly detection using recorded industrial sensor sequences.
 
-```text
-IoT_Predictive_Maintenance/
-│
-├── dashboard/
-│   └── app.py
-│
-├── data/
-│   ├── fault_log.csv
-│   ├── sensor_readings.db
-│   ├── ai4i2020.csv
-│   └── SKAB-master/
-│
-├── detection/
-│   ├── anomaly_detector.py
-│   ├── inspect_ai4i.py
-│   ├── train_ai4i_rf.py
-│   └── test_ai4i_model.py
-│
-├── messaging/
-│   ├── publisher.py
-│   └── consumer.py
-│
-├── models/
-│   └── ai4i_random_forest.pkl
-│
-├── sensors/
-│   ├── temperature.py
-│   ├── vibration.py
-│   ├── humidity.py
-│   ├── pressure.py
-│   ├── current.py
-│   ├── all_sensors.py
-│   └── skab_replay.py
-│
-├── requirements.txt
-└── README.md
+### NAB
+
+Used for additional anomaly-detection experiments.
+
+The NAB dataset is not bundled in the GitHub repository because of its size.
+
+Dataset sources and licensing information are documented in:
+
+`DATASET_ATTRIBUTION.md`
+
+### Dataset Licensing
+
+The bundled SKAB material includes GPL-3.0-licensed content.
+
+Redistribution must comply with the applicable licence obligations.
+
+The AI4I dataset uses CC BY 4.0 licensing, and NAB includes MIT-licensed material.
+
+---
+
+## 12. SKAB Anomaly Detection Evaluation
+
+The project includes:
+
+`detection/evaluate_skab_final.py`
+
+This script evaluates selected SKAB sequences and compares two approaches:
+
+1. Rolling Z-score
+2. Fixed-reference detection
+
+The evaluation includes:
+
+- Per-sequence results
+- Confusion matrices
+- Precision
+- Recall
+- F1-score
+- Accuracy
+- False-positive rates
+- False positives per 1,000 readings
+- Anomaly episode detection
+- Detection delays
+
+### Overall Evaluation Results
+
+| Metric | Rolling Z-score | Fixed Reference |
+|---|---:|---:|
+| Precision | 39.02% | 38.16% |
+| Recall | 60.22% | 34.14% |
+| F1-score | 47.35% | 36.04% |
+| Accuracy | 48.60% | 53.48% |
+| False-positive rate | 58.64% | 34.47% |
+| False positives per 1,000 readings | 361.29 | 212.37 |
+| Detected anomaly episodes | 3 | 2 |
+| Missed anomaly episodes | 0 | 1 |
+| Mean detection delay (samples) | 0.67 | 111.00 |
+
+The evaluation uses selected sequences:
+
+- `0.csv`
+- `3.csv`
+- `11.csv`
+
+These results are not representative of all industrial machines or all SKAB sequences.
+
+### Evaluation Conclusion
+
+Rolling Z-score achieved better recall and episode detection than the fixed-reference approach in this evaluation.
+
+However, both methods generated substantial false alarms.
+
+Further calibration and validation are necessary before using the detection methods for operational maintenance decisions.
+
+### Saved Evaluation Report
+
+`results/skab_final_evaluation.json`
+
+To reproduce the evaluation:
+
+```cmd
+python detection\evaluate_skab_final.py
 ```
 
-The structure above highlights the main project components. Additional experimental scripts and model files may also be present in the local development folder.
+---
 
-## Prerequisites
+## 13. Installation and Setup
 
-Install the following before running the project:
+### Prerequisites
 
-- Python 3
-- Git (optional)
+Install:
+
+- Python 3.12.10
+- Git
 - Mosquitto MQTT Broker
 
-Mosquitto must be installed separately because the project uses a local MQTT broker.
+The following instructions are intended for Windows Command Prompt.
 
-## Installation and Setup
+### Step 1 — Clone the Repository
 
-### 1. Download the Project
+Open the GitHub repository, select **Code**, and copy the HTTPS clone URL.
 
-Clone the repository using the clone URL available on GitHub:
+Run:
 
-```bash
-git clone
+```cmd
+git clone <YOUR_REPOSITORY_HTTPS_URL>
 ```
 
-Append the copied repository URL to the command.
+Replace the placeholder with the repository's actual HTTPS clone URL.
 
-Alternatively, download the repository as a ZIP file and extract it.
+Then open the cloned project folder:
 
-Open the project folder in VS Code or Command Prompt.
+```cmd
+cd IoT_Predictive_Maintenance
+```
 
-### 2. Create a Virtual Environment
+### Step 2 — Create a Virtual Environment
 
-```bash
+```cmd
 python -m venv venv
 ```
 
-Activate it on Windows:
+Activate it:
 
-```bash
+```cmd
 venv\Scripts\activate
 ```
 
-### 3. Install Dependencies
+### Step 3 — Install Dependencies
 
-```bash
-pip install -r requirements.txt
+```cmd
+python -m pip install -r requirements.txt
 ```
 
-### 4. Start the MQTT Broker
+The primary Python dependencies are:
 
-Install Mosquitto and start the broker.
+```text
+Flask==3.1.3
+paho-mqtt==2.2.0
+numpy==2.5.4
+```
 
-If Mosquitto is available in your system PATH, run:
+Mosquitto must be installed separately.
 
-```bash
+### Step 4 — Start the MQTT Broker
+
+For local development, start Mosquitto using an appropriate local broker configuration.
+
+For example, when the executable is available on PATH:
+
+```cmd
 mosquitto -v
 ```
 
-Keep the broker running while using the project.
+Broker authentication and network access depend on the local Mosquitto configuration.
 
-The publisher and consumer connect to:
+### Step 5 — Start the MQTT Consumer
 
-| Setting | Value |
-|---|---|
-| Broker | localhost |
-| Port | 1883 |
-| Topic | factory/sensors |
+Open another terminal, activate the virtual environment and run:
 
-## Running the Project
-
-Open three separate terminals in the project folder.
-
-Activate the virtual environment in each terminal.
-
-### Terminal 1: Start the MQTT Consumer
-
-```bash
-python messaging/consumer.py
+```cmd
+python messaging\consumer.py
 ```
 
-The consumer receives sensor readings, performs anomaly detection and stores readings and alerts in SQLite.
+### Step 6 — Start the Sensor Publisher
 
-It creates the database and required tables when the consumer starts.
+Open another terminal and run:
 
-### Terminal 2: Start the Sensor Publisher
-
-```bash
-python messaging/publisher.py
+```cmd
+python messaging\publisher.py
 ```
 
-The publisher generates sensor readings, introduces simulated fault-like changes and sends the data to the MQTT broker.
+The publisher generates simulated sensor readings and sends them through MQTT.
 
-### Terminal 3: Start the Flask Dashboard
+### Step 7 — Start the Dashboard
 
-```bash
-python dashboard/app.py
+Open another terminal and run:
+
+```cmd
+python dashboard\app.py
 ```
 
-Open the dashboard in your browser:
+Open:
 
-`http://127.0.0.1:5000`
+http://127.0.0.1:5000
 
-The dashboard displays incoming sensor readings, detected anomalies, maintenance alerts and historical information.
+The dashboard should display the locally stored monitoring information.
 
-Keep the broker, consumer, publisher and dashboard running during the live demonstration.
+### Important
 
-## Testing with SKAB Dataset
+Start the MQTT broker before starting the consumer and publisher.
 
-The project includes a SKAB dataset replay module for testing the live monitoring pipeline with recorded sensor data.
+A fresh installation begins with an empty local database.
+
+The project is designed for local demonstration rather than unrestricted public hosting.
+
+---
+
+## 14. Running Dataset Replay
+
+### SKAB Replay
+
+```cmd
+python sensors\skab_replay.py
+```
+
+This sends recorded SKAB sensor data through the MQTT pipeline.
+
+### AI4I Replay
+
+```cmd
+python messaging\ai4i_replay_publisher.py
+```
+
+This publishes AI4I records for prediction processing.
+
+The AI4I replay and the five-sensor monitoring stream use different message structures and processing paths.
+
+Avoid running multiple publishers simultaneously unless intentionally testing mixed data sources.
+
+---
+
+## 15. Automated Testing
+
+The project includes unit and integration tests.
+
+### Windows Test Runner
 
 Run:
 
-```bash
-python sensors/skab_replay.py
+```cmd
+run_tests.bat
 ```
 
-The replay module sends selected recorded sensor readings through the MQTT pipeline.
+### Alternative Python Command
 
-This allows the anomaly detection component to be evaluated using recorded industrial sensor data rather than only randomly generated readings.
-
-Avoid running the normal publisher and SKAB replay simultaneously unless intentionally testing combined inputs.
-
-## Database
-
-The system uses SQLite for local data storage.
-
-The database file is:
-
-`data/sensor_readings.db`
-
-It stores:
-- Sensor readings
-- Timestamps
-- Anomaly scores
-- Alert severity
-- Maintenance recommendations
-
-The database and required tables are created when the MQTT consumer starts.
-
-A fresh installation starts with an empty database. Previous readings and alerts are not included in the repository.
-
-## Troubleshooting
-
-### 1. MQTT Connection Refused
-- Ensure Mosquitto is installed.
-- Check that the MQTT broker is running.
-- Verify that port 1883 is available.
-
-### 2. No Sensor Readings on the Dashboard
-- Ensure the MQTT broker is running.
-- Start the consumer before the publisher.
-- Check that both use the same broker address and topic.
-
-### 3. Database or Table Not Found
-- Start the MQTT consumer first.
-- It creates the database and required tables.
-- Then start the Flask dashboard.
-
-### 4. Missing Python Modules
-
-Run:
-
-```bash
-pip install -r requirements.txt
+```cmd
+python -m unittest detection.test_consumer_integration detection.test_ai4i_integration detection.test_detector -q
 ```
 
-### 5. Machine-Failure Prediction Not Working
-- Verify that `models/ai4i_random_forest.pkl` exists.
-- Check that the required model dependencies are installed.
-- Ensure valid machine parameters are entered.
+The test suite covers:
 
-## Current Limitations
+- Sensor event validation
+- Anomaly detection
+- Alert generation
+- Duplicate event handling
+- Alert cooldown behaviour
+- Invalid readings
+- Empty database handling
+- AI4I feature processing
+- AI4I prediction storage
+- Invalid AI4I messages
 
-- Sensor readings are simulated; physical industrial sensors have not been connected.
-- MQTT communication currently runs locally on the development machine.
-- The AI4I prediction model is separate from the live MQTT sensor stream.
-- Machine parameters for AI4I prediction are entered manually.
-- The AI4I dataset is a simulated predictive-maintenance dataset and does not represent data collected from a target factory.
-- The model can miss actual failures; predictions should be treated as decision support rather than certainty.
-- The system generates alerts and predictions but does not automatically stop machines or perform repairs.
-- The dashboard is locally hosted and has not been deployed to a cloud server.
-- Authentication, encrypted MQTT communication and production-level security have not been implemented.
+The project has previously passed 21 integration tests and 7 detector tests.
 
-## Future Improvements
+These tests do not replace live MQTT broker testing, security testing or industrial validation.
 
-- Integrate machine-learning predictions with an MQTT-based data pipeline using compatible machine-state inputs.
-- Evaluate and reduce false-positive anomaly alerts.
-- Improve sensor validation and fault detection.
-- Add automated testing and stronger error handling.
-- Integrate physical industrial sensors.
-- Implement authentication and secure MQTT communication.
-- Explore cloud deployment and industrial communication protocols.
+---
 
-## Note
+## 16. Reproducibility
 
-This project demonstrates IoT-based sensor monitoring, statistical anomaly detection, maintenance alert generation and machine-failure classification.
+The repository contains:
 
-It is a prototype intended for academic and demonstration purposes. Further integration, testing and validation using real industrial equipment are required before practical industrial deployment.
+- Project source code
+- Python dependency requirements
+- Trained AI4I Random Forest model
+- AI4I dataset
+- SKAB dataset files
+- Evaluation scripts
+- Evaluation results
+- Automated tests
+- Dataset attribution documentation
 
-## Author
+The development environment uses Python 3.12.10.
 
-Developed as an IoT-Based Predictive Maintenance project.
+A clean-clone installation and complete end-to-end reproduction should be verified separately.
+
+The project does not include the developer's local SQLite database or historical monitoring records.
+
+---
+
+## 17. Security Considerations
+
+The current implementation includes:
+
+- MQTT message validation
+- Duplicate event handling
+- Environment-based MQTT credential support
+- CSRF protection for maintenance actions
+- Local database storage
+
+Security limitations include:
+
+- No dashboard user authentication
+- No role-based access control
+- No configured MQTT TLS encryption
+- No bundled production broker ACL configuration
+- No cryptographic integrity verification for pickle models
+- No completed production security audit
+
+The system should be used only in a trusted development environment until these limitations are addressed.
+
+---
+
+## 18. Current Limitations
+
+The main limitations are:
+
+1. Sensor data is simulated or replayed from benchmark datasets.
+2. No real industrial pilot has been completed.
+3. Anomaly thresholds require further calibration.
+4. SKAB testing shows high false-positive rates.
+5. The AI4I model misses some actual failures.
+6. The AI4I model and five-sensor monitoring system are separate.
+7. The system predicts failure classification, not time-to-failure.
+8. Production MQTT security is incomplete.
+9. Dashboard authentication is not implemented.
+10. Large-scale database retention and deployment behaviour have not been validated.
+11. Performance has not been verified across different operating systems and industrial environments.
+
+---
+
+## 19. Future Improvements
+
+Potential future work includes:
+
+- MQTT TLS encryption and broker ACLs
+- Dashboard authentication and user roles
+- Secure model integrity verification
+- Industrial threshold calibration
+- Reduced false-alarm rates
+- MQTT reconnect and recovery testing
+- Database retention and archival policies
+- Real industrial sensor integration
+- Unified live machine-failure prediction
+- Time-to-failure estimation
+- Per-machine validation
+- Continuous integration and deployment
+- Cloud-based monitoring
+- Authorised industrial pilot testing
+
+These are future improvements, not completed project features.
+
+---
+
+## 20. Conclusion
+
+This project demonstrates an IoT-based predictive maintenance prototype combining simulated sensor monitoring, MQTT communication, anomaly detection, maintenance management and machine-learning-based failure classification.
+
+It provides a working foundation for monitoring equipment behaviour and investigating abnormal operating conditions.
+
+The AI4I model demonstrates machine-failure classification capability, while the SKAB evaluation identifies important limitations in statistical anomaly detection.
+
+Further security hardening, threshold calibration, model validation and industrial testing are required before production deployment.

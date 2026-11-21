@@ -2,6 +2,8 @@ import sqlite3
 import json
 import pickle
 import secrets
+import os
+import hmac
 from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, render_template_string, request, redirect, url_for, session, abort
@@ -1788,6 +1790,427 @@ def maintenance_csrf_token():
     return session["maintenance_csrf"]
 
 
+
+# Dashboard authentication
+@app.before_request
+def require_dashboard_login():
+    if request.endpoint in ("dashboard_login", "dashboard_logout"):
+        return None
+    if not session.get("authenticated"):
+        return redirect(url_for("dashboard_login"))
+    return None
+
+
+@app.route("/login", methods=["GET", "POST"])
+def dashboard_login():
+    if session.get("authenticated"):
+        return redirect(url_for("dashboard"))
+
+    error = None
+
+    if request.method == "POST":
+        expected_user = os.environ.get("DASHBOARD_USERNAME", "")
+        expected_password = os.environ.get("DASHBOARD_PASSWORD", "")
+
+        supplied_user = request.form.get("username", "")
+        supplied_password = request.form.get("password", "")
+
+        if (
+            expected_user
+            and expected_password
+            and hmac.compare_digest(supplied_user, expected_user)
+            and hmac.compare_digest(supplied_password, expected_password)
+        ):
+            session.clear()
+            session["authenticated"] = True
+            return redirect(url_for("dashboard"))
+
+        error = "Invalid username or password."
+
+    return render_template_string("""
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Sign In | Predictive Maintenance</title>
+<style>
+* { box-sizing: border-box; }
+body {
+    margin: 0;
+    min-height: 100vh;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    background: #f7f8f2;
+    color: #243b30;
+}
+.layout {
+    min-height: 100vh;
+    display: grid;
+    grid-template-columns: 1.1fr 1fr;
+}
+.hero {
+    background: linear-gradient(145deg, #183d30, #376d51);
+    color: #fff;
+    padding: 65px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+}
+.brand {
+    font-size: 16px;
+    font-weight: 700;
+    letter-spacing: .4px;
+}
+.hero-content { max-width: 540px; }
+.hero h1 {
+    font-size: clamp(34px, 4vw, 58px);
+    line-height: 1.12;
+    letter-spacing: -1.5px;
+    margin-bottom: 20px;
+}
+.hero p {
+    font-size: 17px;
+    line-height: 1.8;
+    color: #dce9df;
+}
+.features {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin-top: 35px;
+}
+.feature {
+    border: 1px solid #ffffff40;
+    border-radius: 30px;
+    padding: 10px 15px;
+    font-size: 13px;
+}
+.hero-footer {
+    font-size: 12px;
+    color: #c6dbce;
+}
+.login-side {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 35px;
+}
+.login-card {
+    width: 100%;
+    max-width: 400px;
+    animation: appear .5s ease-out both;
+}
+.eyebrow {
+    color: #4e8265;
+    font-weight: 700;
+    font-size: 12px;
+    letter-spacing: 1.6px;
+}
+.login-card h2 {
+    font-size: 34px;
+    margin: 12px 0;
+    letter-spacing: -1px;
+}
+.subtitle {
+    color: #728078;
+    line-height: 1.6;
+    margin-bottom: 35px;
+}
+label {
+    display: block;
+    font-size: 13px;
+    font-weight: 600;
+    margin: 20px 0 9px;
+}
+input {
+    width: 100%;
+    padding: 14px 15px;
+    border: 1px solid #d8e0d9;
+    border-radius: 9px;
+    background: #fff;
+    color: #243b30;
+    font: inherit;
+    outline: none;
+    transition: border-color .2s, box-shadow .2s;
+}
+input:focus {
+    border-color: #3b8059;
+    box-shadow: 0 0 0 3px #3b80591c;
+}
+.password-wrap { position: relative; }
+.password-wrap input { padding-right: 75px; }
+.toggle {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    border: none;
+    background: transparent;
+    color: #397653;
+    cursor: pointer;
+    font-weight: 600;
+}
+.submit {
+    margin-top: 28px;
+    width: 100%;
+    padding: 15px;
+    border: 0;
+    border-radius: 9px;
+    background: #285b40;
+    color: white;
+    font: inherit;
+    font-weight: 600;
+    cursor: pointer;
+    transition: background .2s, transform .2s;
+}
+.submit:hover {
+    background: #1d4631;
+    transform: translateY(-1px);
+}
+.error {
+    background: #fff0ee;
+    border: 1px solid #f3c6c0;
+    color: #9b3027;
+    padding: 12px;
+    border-radius: 8px;
+    font-size: 13px;
+    margin-bottom: 18px;
+}
+.secure-note {
+    text-align: center;
+    color: #87938b;
+    font-size: 12px;
+    margin-top: 25px;
+}
+@keyframes appear {
+    from { opacity: 0; transform: translateY(14px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 800px) {
+    .layout { grid-template-columns: 1fr; }
+    .hero { padding: 30px; gap: 20px; }
+    .hero h1 { font-size: 30px; }
+    .hero-content p, .features, .hero-footer { display: none; }
+    .login-side { padding: 45px 25px; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .login-card { animation: none; }
+    .submit { transition: none; }
+}
+
+.machine-visual {
+    width: 100%;
+    max-width: 540px;
+    margin-top: 28px;
+}
+.machine-visual svg {
+    width: 100%;
+    height: auto;
+    display: block;
+}
+.signal-dot {
+    animation: signalPulse 2.2s ease-in-out infinite;
+}
+.signal-line {
+    stroke-dasharray: 360;
+    stroke-dashoffset: 360;
+    animation: drawSignal 4s ease-in-out infinite;
+}
+.connection {
+    animation: flowSignal 6s linear infinite;
+}
+@keyframes signalPulse {
+    0%, 100% { opacity: .45; }
+    50% { opacity: 1; }
+}
+@keyframes drawSignal {
+    0% { stroke-dashoffset: 360; opacity: .4; }
+    45%, 85% { stroke-dashoffset: 0; opacity: 1; }
+    100% { stroke-dashoffset: 0; opacity: .4; }
+}
+@keyframes flowSignal {
+    to { stroke-dashoffset: -120; }
+}
+@media (prefers-reduced-motion: reduce) {
+    .signal-dot, .signal-line, .connection {
+        animation: none;
+    }
+    .signal-line {
+        stroke-dashoffset: 0;
+    }
+}
+</style>
+</head>
+<body>
+<div class="layout">
+    <section class="hero">
+        <div class="brand">INDUSTRIAL INTELLIGENCE</div>
+        <div class="hero-content">
+            <h1>Smarter monitoring.<br>Better maintenance.</h1>
+            <p>
+                Monitor equipment conditions, identify unusual
+                behaviour and manage maintenance activities
+                from one integrated platform.
+            </p>
+
+            <div class="machine-visual" aria-label="Illustration of an industrial motor with live sensor signals">
+                <svg viewBox="0 0 540 290" role="img"
+                     aria-label="Industrial motor monitoring illustration">
+                    <defs>
+                        <linearGradient id="motorGradient" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#a5cbb0"/>
+                            <stop offset="100%" stop-color="#568d72"/>
+                        </linearGradient>
+                        <linearGradient id="screenGradient" x1="0" y1="0" x2="1" y2="1">
+                            <stop offset="0%" stop-color="#214c3c"/>
+                            <stop offset="100%" stop-color="#153a2d"/>
+                        </linearGradient>
+                    </defs>
+
+                    <!-- Background grid -->
+                    <g stroke="#ffffff" stroke-opacity=".09">
+                        <path d="M0 50 H540 M0 100 H540 M0 150 H540 M0 200 H540 M0 250 H540"/>
+                        <path d="M50 0 V290 M110 0 V290 M170 0 V290 M230 0 V290 M290 0 V290 M350 0 V290 M410 0 V290 M470 0 V290"/>
+                    </g>
+
+                    <!-- Monitoring panel -->
+                    <rect x="315" y="58" width="193" height="152" rx="15"
+                          fill="url(#screenGradient)" stroke="#8ebda0"
+                          stroke-opacity=".55"/>
+                    <circle cx="334" cy="78" r="4" fill="#a6e7b9" class="signal-dot"/>
+                    <text x="347" y="82" fill="#e4f2e7" font-size="11"
+                          font-family="Arial">SENSOR SIGNAL</text>
+                    <path d="M330 155 H492" stroke="#8ebda0" stroke-opacity=".3"/>
+                    <path d="M330 125 H492" stroke="#8ebda0" stroke-opacity=".2"/>
+                    <path d="M330 185 H492" stroke="#8ebda0" stroke-opacity=".2"/>
+                    <path class="signal-line"
+                          d="M330 155 L350 155 L365 135 L381 168 L398 113 L415 148 L433 139 L450 158 L467 121 L492 139"
+                          fill="none" stroke="#b8f0c6" stroke-width="3"
+                          stroke-linecap="round" stroke-linejoin="round"/>
+                    <text x="331" y="198" fill="#a9cdb6" font-size="10"
+                          font-family="Arial">LIVE TELEMETRY</text>
+
+                    <!-- Industrial motor base -->
+                    <rect x="49" y="214" width="215" height="15" rx="5"
+                          fill="#aac9b4" opacity=".85"/>
+                    <rect x="72" y="227" width="30" height="12" rx="3"
+                          fill="#7fab90"/>
+                    <rect x="205" y="227" width="30" height="12" rx="3"
+                          fill="#7fab90"/>
+
+                    <!-- Motor body -->
+                    <rect x="85" y="112" width="144" height="105" rx="22"
+                          fill="url(#motorGradient)" stroke="#c9e8d0"
+                          stroke-width="2"/>
+                    <g stroke="#2e654c" stroke-opacity=".45" stroke-width="5">
+                        <path d="M112 122 V206 M131 119 V210 M150 119 V210 M169 119 V210 M188 122 V206"/>
+                    </g>
+                    <rect x="111" y="95" width="76" height="22" rx="7"
+                          fill="#8ebca0" stroke="#c6e7ce"/>
+                    <circle cx="229" cy="164" r="44" fill="#2b604a"
+                            stroke="#c5e7cf" stroke-width="3"/>
+                    <circle cx="229" cy="164" r="28" fill="#78aa89"/>
+                    <circle cx="229" cy="164" r="17" fill="#d2ebd6"/>
+                    <circle cx="229" cy="164" r="6" fill="#285b43"/>
+                    <rect x="266" y="157" width="40" height="14" rx="5"
+                          fill="#c2e2ca"/>
+
+                    <!-- Sensor nodes -->
+                    <circle cx="112" cy="94" r="7" fill="#c0f5c8"
+                            class="signal-dot"/>
+                    <circle cx="229" cy="119" r="7" fill="#c0f5c8"
+                            class="signal-dot"/>
+                    <circle cx="273" cy="210" r="7" fill="#c0f5c8"
+                            class="signal-dot"/>
+
+                    <!-- Connection paths -->
+                    <path class="connection"
+                          d="M112 94 V49 H300 Q315 49 315 64"
+                          fill="none" stroke="#a9dfb9" stroke-width="2"
+                          stroke-dasharray="5 7"/>
+                    <path class="connection"
+                          d="M229 119 V80 H300"
+                          fill="none" stroke="#a9dfb9" stroke-width="2"
+                          stroke-dasharray="5 7"/>
+                    <path class="connection"
+                          d="M273 210 H300 Q315 210 315 195"
+                          fill="none" stroke="#a9dfb9" stroke-width="2"
+                          stroke-dasharray="5 7"/>
+
+                    <!-- Status -->
+                    <circle cx="83" cy="265" r="5" fill="#a6e7b9"
+                            class="signal-dot"/>
+                    <text x="97" y="269" fill="#dce9df" font-size="12"
+                          font-family="Arial">Equipment monitoring</text>
+                </svg>
+            </div>
+        </div>
+        <div class="hero-footer">
+            IoT-Based Predictive Maintenance System
+        </div>
+    </section>
+
+    <main class="login-side">
+        <div class="login-card">
+            <div class="eyebrow">WELCOME BACK</div>
+            <h2>Sign in</h2>
+            <p class="subtitle">
+                Access your equipment monitoring dashboard.
+            </p>
+
+            {% if error %}
+            <div class="error" role="alert">{{ error }}</div>
+            {% endif %}
+
+            <form method="POST">
+                <label for="username">Username</label>
+                <input id="username" name="username"
+                       autocomplete="username"
+                       placeholder="Enter your username"
+                       required autofocus>
+
+                <label for="password">Password</label>
+                <div class="password-wrap">
+                    <input id="password" name="password"
+                           type="password"
+                           autocomplete="current-password"
+                           placeholder="Enter your password" required>
+                    <button class="toggle" type="button"
+                            onclick="togglePassword()" id="toggleBtn">
+                        Show
+                    </button>
+                </div>
+
+                <button class="submit" type="submit">
+                    Sign in to Dashboard
+                </button>
+            </form>
+
+            <p class="secure-note">
+                Authorised personnel access only
+            </p>
+        </div>
+    </main>
+</div>
+<script>
+function togglePassword() {
+    const input = document.getElementById('password');
+    const button = document.getElementById('toggleBtn');
+    const visible = input.type === 'password';
+    input.type = visible ? 'text' : 'password';
+    button.textContent = visible ? 'Hide' : 'Show';
+}
+</script>
+</body>
+</html>
+""", error=error)
+
+
+@app.route("/logout", methods=["POST"])
+def dashboard_logout():
+    session.clear()
+    return redirect(url_for("dashboard_login"))
+
 @app.route("/maintenance/action", methods=["POST"])
 def maintenance_action():
     if not secrets.compare_digest(request.form.get("csrf_token", ""), maintenance_csrf_token()):
@@ -2467,4 +2890,4 @@ def dashboard():
 
 
 if __name__ == "__main__":
-    app.run(debug=False, use_reloader=False)
+    app.run(host="127.0.0.1", port=5000, debug=False, use_reloader=False)
