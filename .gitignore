@@ -27,3 +27,16 @@ data/SKAB-master/results/
 
 # Local database
 data/sensor_readings.db
+mqtt_clients.txt
+
+# Temporary project backups
+*.bak
+requirements_backup.txt
+
+# Downloadable NAB dataset
+data/NAB/
+
+# Temporary update utilities
+add_ai4i_dashboard.py
+update_latest_replay_dashboard.py
+f1_f2_update_bundle/

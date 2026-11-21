@@ -1,9 +1,13 @@
 import sqlite3
+import json
 import pickle
+import secrets
+from datetime import datetime, timezone
 from pathlib import Path
-from flask import Flask, render_template_string, request
+from flask import Flask, render_template_string, request, redirect, url_for, session, abort
 
 app = Flask(__name__)
+app.secret_key = secrets.token_hex(32)  # Local-session CSRF protection; restart invalidates sessions.
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB_PATH = BASE_DIR / "data" / "sensor_readings.db"
@@ -39,7 +43,8 @@ PAGES = [
     ("alerts", "Maintenance Alerts", "alert-triangle"),
     ("history", "Reading History", "database"),
     ("prediction", "Machine Failure Prediction", "brain-circuit"),
-    ("ai4i_replay", "Replay Prediction Results", "chart-no-axes-combined")
+    ("ai4i_replay", "Replay Prediction Results", "chart-no-axes-combined"),
+    ("maintenance", "Maintenance Management", "clipboard-check")
 ]
 
 HTML = """
@@ -49,7 +54,7 @@ HTML = """
     <title>Industrial Predictive Maintenance</title>
 
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    {% if page != "prediction" %}<meta http-equiv="refresh" content="5">{% endif %}
+    {% if page not in ("prediction", "maintenance") %}<meta http-equiv="refresh" content="5">{% endif %}
 
     <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
 
@@ -580,6 +585,18 @@ HTML = """
             font-size: 11px;
         }
 
+
+        /* MAINTENANCE MANAGEMENT */
+        .maintenance-form { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+        .maintenance-form input, .maintenance-form select, .maintenance-form textarea {
+            border: 1px solid #ccd5d9; border-radius: 6px; padding: 9px;
+            font: inherit; max-width: 100%;
+        }
+        .maintenance-form textarea { min-width: 230px; min-height: 42px; }
+        .maintenance-note { color: #718087; font-size: 12px; margin-top: 8px; }
+        .maintenance-success { padding: 12px; background: #edf7f0; border-radius: 7px; margin-bottom: 15px; }
+        .maintenance-error { padding: 12px; background: #fff0f0; border-radius: 7px; margin-bottom: 15px; }
+
         @media (max-width: 1150px) {
             .sensor-grid {
                 grid-template-columns: repeat(3, minmax(0, 1fr));
@@ -711,7 +728,7 @@ HTML = """
             <h2>Equipment Status</h2>
 
             <p class="section-description">
-                Latest readings received from all five sensors.
+                Latest readings received from all five sensors. Asset: {{ latest_asset or "Unknown" }} | Source: {{ latest_source or "Unknown" }}.
             </p>
 
             {% if latest %}
@@ -723,7 +740,7 @@ HTML = """
                         <div class="card sensor-card">
 
                             <div class="card-label">
-                                {{ sensor_labels[sensor] }}
+                                {{ sensor_labels[sensor] }}{% if sensor in latest_synthetic %} (synthetic){% endif %}
                             </div>
 
                             <div class="sensor-value">
@@ -813,6 +830,7 @@ HTML = """
                         <tr>
                             <th>Time</th>
                             <th>Sensor</th>
+                            <th>Asset / Source</th>
                             <th>Reading</th>
                             <th>Severity</th>
                             <th>Recommended Action</th>
@@ -822,7 +840,8 @@ HTML = """
                             <tr>
                                 <td>{{ alert[0] }}</td>
                                 <td>{{ sensor_labels.get(alert[1], alert[1]) }}</td>
-                                <td>{{ alert[2] }}</td>
+                                <td>{{ alert[7] or "Unknown" }} / {{ alert[8] or "Unknown" }}</td>
+                                <td>{{ alert[2] }} {{ alert[6] or "unit unknown" }}</td>
                                 <td class="{{ alert[4] }}">
                                     {{ alert[4] }}
                                 </td>
@@ -848,7 +867,7 @@ HTML = """
             <div class="info-banner">
                 <strong>Live sensor monitoring:</strong>
                 View individual sensor readings and their recent trends.
-                Graphs show the latest 30 readings.
+                Graphs show up to 30 readings from one source and run. Asset: {{ latest_asset or "Unknown" }} | Source: {{ latest_source or "Unknown" }}.
             </div>
 
             <div class="sensor-grid">
@@ -1024,6 +1043,7 @@ HTML = """
                         <tr>
                             <th>Timestamp</th>
                             <th>Sensor</th>
+                            <th>Asset / Source</th>
                             <th>Reading</th>
                             <th>Z-score</th>
                             <th>Severity</th>
@@ -1035,7 +1055,8 @@ HTML = """
                             <tr>
                                 <td>{{ alert[0] }}</td>
                                 <td>{{ sensor_labels.get(alert[1], alert[1]) }}</td>
-                                <td>{{ alert[2] }}</td>
+                                <td>{{ alert[7] or "Unknown" }} / {{ alert[8] or "Unknown" }}</td>
+                                <td>{{ alert[2] }} {{ alert[6] or "unit unknown" }}</td>
                                 <td>{{ alert[3] }}</td>
                                 <td class="{{ alert[4] }}">
                                     {{ alert[4] }}
@@ -1250,7 +1271,7 @@ HTML = """
             <h2>Latest Replay Performance</h2>
 
             <p class="section-description">
-                These metrics cover only the most recent replay run, identified by its starting UDI 1 record.
+                These metrics cover only the most recent tracked replay run, identified by its unique run ID.
                 The timestamps below show the replay interval.
             </p>
 
@@ -1274,7 +1295,7 @@ HTML = """
             </div>
 
             <p class="section-description" style="margin-top: 12px;">
-                Replay interval: {{ latest_prediction_metrics["start_timestamp"] or "Not available" }}
+                Run ID: {{ latest_run_id or "Not available" }}. <br>Replay interval: {{ latest_prediction_metrics["start_timestamp"] or "Not available" }}
                 to {{ latest_prediction_metrics["end_timestamp"] or "Not available" }}.
             </p>
 
@@ -1306,7 +1327,7 @@ HTML = """
             <h2>Overall Replay Performance (All Runs)</h2>
 
             <p class="section-description">
-                Results below combine every AI4I replay run currently saved in the database.
+                Results combine tracked runs and {{ legacy_prediction_count }} historical records without a run ID. Repeated records are not independent model tests.
             </p>
 
             <div class="summary-grid">
@@ -1385,6 +1406,7 @@ HTML = """
                             <th>Timestamp</th>
                             <th>UDI</th>
                             <th>Product ID</th>
+                            <th>Run ID</th>
                             <th>Machine Type</th>
                             <th>Failure Score</th>
                             <th>Threshold</th>
@@ -1397,6 +1419,7 @@ HTML = """
                                 <td>{{ record[0] }}</td>
                                 <td>{{ record[1] }}</td>
                                 <td>{{ record[2] }}</td>
+                                <td style="overflow-wrap:anywhere;max-width:180px">{{ record[9] or "Legacy / untracked" }}</td>
                                 <td>{{ record[3] }}</td>
                                 <td>{{ "%.2f"|format(record[4] * 100) }}%</td>
                                 <td>{{ "%.2f"|format(record[5] * 100) }}%</td>
@@ -1441,6 +1464,115 @@ HTML = """
                 the records currently stored from the AI4I dataset and is not the model's held-out test accuracy.
             </p>
 
+
+        {% elif page == "maintenance" %}
+            <div class="info-banner"><strong>Maintenance management:</strong>
+                Acknowledge sensor alerts, assign planned maintenance, and record completed work.
+                Acknowledgement means an operator has reviewed an alert; it does not confirm a repair.
+            </div>
+            {% if maintenance_notice %}<div class="maintenance-success">{{ maintenance_notice }}</div>{% endif %}
+            {% if maintenance_error %}<div class="maintenance-error">{{ maintenance_error }}</div>{% endif %}
+
+            <h2>Schedule Maintenance</h2>
+            <form method="POST" action="{{ url_for('maintenance_action') }}" class="prediction-form maintenance-form">
+                <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                <input type="hidden" name="action" value="schedule">
+                <input name="asset_id" maxlength="100" placeholder="Asset ID" required aria-label="Asset ID">
+                <input name="assigned_to" maxlength="80" placeholder="Assigned engineer" required aria-label="Assigned engineer">
+                <select name="priority" aria-label="Priority"><option>HIGH</option><option selected>MEDIUM</option><option>LOW</option></select>
+                <input type="datetime-local" name="scheduled_for" required aria-label="Scheduled time">
+                <textarea name="description" maxlength="1000" placeholder="Maintenance task" required aria-label="Maintenance task"></textarea>
+                <button type="submit" class="filter-button">Schedule Task</button>
+                <div class="maintenance-note">Enter the scheduled date and time in the factory's local time zone.</div>
+            </form>
+
+
+            <h2>Review Alerts</h2>
+            <p class="section-description">Filter historical alerts and acknowledge those requiring review. Acknowledgement does not mean maintenance is complete.</p>
+            <form method="GET" action="/" class="filter-bar">
+                <input type="hidden" name="page" value="maintenance">
+                <div class="filter-group"><label for="m_severity">Severity</label>
+                    <select id="m_severity" name="m_severity">
+                        <option value="all" {% if m_severity == 'all' %}selected{% endif %}>All Severities</option>
+                        {% for level in ['HIGH','MEDIUM','LOW'] %}<option value="{{ level }}" {% if m_severity == level %}selected{% endif %}>{{ level }}</option>{% endfor %}
+                    </select>
+                </div>
+                <div class="filter-group"><label for="m_status">Review Status</label>
+                    <select id="m_status" name="m_status">
+                        <option value="all" {% if m_status == 'all' %}selected{% endif %}>All Alerts</option>
+                        <option value="unacknowledged" {% if m_status == 'unacknowledged' %}selected{% endif %}>Unacknowledged</option>
+                        <option value="acknowledged" {% if m_status == 'acknowledged' %}selected{% endif %}>Acknowledged</option>
+                    </select>
+                </div>
+                <div class="filter-group"><label for="m_limit">Show Entries</label>
+                    <select id="m_limit" name="m_limit">
+                        {% for option in ['20','50','100','all'] %}
+                        <option value="{{ option }}" {% if m_limit == option %}selected{% endif %}>{{ 'All Entries (paginated)' if option == 'all' else 'Latest ' + option }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <button type="submit" class="filter-button">Apply Filters</button>
+                <a href="/?page=maintenance" class="reset-link">Reset</a>
+            </form>
+            <p class="section-description" style="margin-top:15px">Showing {{ m_start }}–{{ m_end }} of {{ m_total }} matching alerts. Page {{ m_page }} of {{ m_pages }}.</p>
+            {% if maintenance_alerts %}
+            <div class="table-container"><table>
+                <tr><th>Time</th><th>Asset / Source</th><th>Sensor</th><th>Severity</th><th>Review Status</th><th>Action</th></tr>
+                {% for alert in maintenance_alerts %}
+                <tr>
+                    <td>{{ alert[1] }}</td><td>{{ alert[4] or "Unknown" }} / {{ alert[5] or "Unknown" }}</td>
+                    <td>{{ sensor_labels.get(alert[2], alert[2]) }}</td>
+                    <td class="{{ alert[3] }}">{{ alert[3] }}</td>
+                    <td>{{ "Acknowledged by " + alert[6] if alert[6] else "Unacknowledged" }}</td>
+                    <td>
+                        {% if not alert[6] %}
+                        <form method="POST" action="{{ url_for('maintenance_action') }}" class="maintenance-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="action" value="acknowledge">
+                            <input type="hidden" name="alert_id" value="{{ alert[0] }}">
+                            <input name="operator" maxlength="80" placeholder="Operator name" required aria-label="Operator name">
+                            <button type="submit" class="filter-button">Acknowledge</button>
+                        </form>
+                        {% else %}<span class="small-text">{{ alert[7] }}</span>{% endif %}
+                    </td>
+                </tr>
+                {% endfor %}
+            </table></div>
+            {% else %}<div class="empty-message">No alerts match the selected filters.</div>{% endif %}
+            {% if m_pages > 1 %}
+            <div class="pagination"><div class="pagination-info">Page {{ m_page }} of {{ m_pages }}</div>
+                <div class="pagination-links">
+                    {% if m_page > 1 %}<a href="{{ url_for('dashboard', page='maintenance', m_severity=m_severity, m_status=m_status, m_limit=m_limit, m_page=m_page-1) }}">Previous</a>{% endif %}
+                    <span>{{ m_page }} / {{ m_pages }}</span>
+                    {% if m_page < m_pages %}<a href="{{ url_for('dashboard', page='maintenance', m_severity=m_severity, m_status=m_status, m_limit=m_limit, m_page=m_page+1) }}">Next</a>{% endif %}
+                </div>
+            </div>
+            {% endif %}
+
+            <h2>Maintenance Tasks and History</h2>
+            {% if maintenance_tasks %}
+            <div class="table-container"><table>
+                <tr><th>Created (UTC)</th><th>Asset</th><th>Priority</th><th>Engineer</th><th>Scheduled (local)</th><th>Description</th><th>Status</th><th>Action</th></tr>
+                {% for task in maintenance_tasks %}
+                <tr>
+                    <td>{{ task[1] }}</td><td>{{ task[2] }}</td><td class="{{ task[3] }}">{{ task[3] }}</td>
+                    <td>{{ task[4] }}</td><td>{{ task[5] }}</td><td class="recommendation">{{ task[6] }}</td>
+                    <td>{{ task[7] }}{% if task[8] %}<div class="small-text">Completed: {{ task[8] }}</div>{% endif %}</td>
+                    <td>{% if task[7] == 'SCHEDULED' %}
+                        <form method="POST" action="{{ url_for('maintenance_action') }}" class="maintenance-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="action" value="complete">
+                            <input type="hidden" name="task_id" value="{{ task[0] }}">
+                            <input name="completion_notes" maxlength="1000" placeholder="Work performed" required aria-label="Work performed">
+                            <button type="submit" class="filter-button">Mark Complete</button>
+                        </form>
+                    {% else %}<span class="small-text">{{ task[9] or 'No notes' }}</span>{% endif %}</td>
+                </tr>
+                {% endfor %}
+            </table></div>
+            {% else %}<div class="empty-message">No maintenance tasks have been scheduled.</div>{% endif %}
+            <p class="maintenance-note">Showing the latest 100 tasks. Work records are operator-entered and are not automatically verified against physical equipment.</p>
+
         {% elif page == "history" %}
 
             <div class="info-banner">
@@ -1475,11 +1607,8 @@ HTML = """
                     <table>
                         <tr>
                             <th>Timestamp</th>
-                            <th>Temperature (°C)</th>
-                            <th>Vibration (mm/s)</th>
-                            <th>Humidity (%)</th>
-                            <th>Pressure (bar)</th>
-                            <th>Current (A)</th>
+                            <th>Asset</th><th>Source</th>
+                            <th>Temperature</th><th>Vibration</th><th>Humidity</th><th>Pressure</th><th>Current</th>
                         </tr>
 
                         {% for row in readings %}
@@ -1624,6 +1753,111 @@ HTML = """
 """
 
 
+
+def utc_timestamp():
+    return datetime.now(timezone.utc).isoformat(timespec="seconds").replace("+00:00", "Z")
+
+
+def create_maintenance_tables(conn):
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS alert_acknowledgements (
+            alert_id INTEGER PRIMARY KEY,
+            operator TEXT NOT NULL,
+            acknowledged_at TEXT NOT NULL
+        )
+    """)
+    conn.execute("""
+        CREATE TABLE IF NOT EXISTS maintenance_tasks (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            created_at TEXT NOT NULL,
+            asset_id TEXT NOT NULL,
+            priority TEXT NOT NULL,
+            assigned_to TEXT NOT NULL,
+            scheduled_for TEXT NOT NULL,
+            description TEXT NOT NULL,
+            status TEXT NOT NULL DEFAULT 'SCHEDULED',
+            completed_at TEXT,
+            completion_notes TEXT
+        )
+    """)
+
+
+def maintenance_csrf_token():
+    if "maintenance_csrf" not in session:
+        session["maintenance_csrf"] = secrets.token_hex(32)
+    return session["maintenance_csrf"]
+
+
+@app.route("/maintenance/action", methods=["POST"])
+def maintenance_action():
+    if not secrets.compare_digest(request.form.get("csrf_token", ""), maintenance_csrf_token()):
+        abort(400, "Invalid form token")
+
+    action = request.form.get("action", "")
+    notice = None
+    error = None
+    with sqlite3.connect(DB_PATH) as conn:
+        create_maintenance_tables(conn)
+        if action == "acknowledge":
+            try:
+                alert_id = int(request.form.get("alert_id", ""))
+            except ValueError:
+                abort(400, "Invalid alert ID")
+            operator = request.form.get("operator", "").strip()
+            if not (0 < len(operator) <= 80):
+                error = "Enter a valid operator name."
+            elif not conn.execute("SELECT 1 FROM alerts WHERE id = ?", (alert_id,)).fetchone():
+                error = "Alert not found."
+            else:
+                result = conn.execute("""
+                    INSERT OR IGNORE INTO alert_acknowledgements
+                    (alert_id, operator, acknowledged_at) VALUES (?, ?, ?)
+                """, (alert_id, operator, utc_timestamp()))
+                notice = "Alert acknowledged." if result.rowcount else "Alert was already acknowledged."
+        elif action == "schedule":
+            asset = request.form.get("asset_id", "").strip()
+            engineer = request.form.get("assigned_to", "").strip()
+            priority = request.form.get("priority", "")
+            scheduled = request.form.get("scheduled_for", "").strip()
+            description = request.form.get("description", "").strip()
+            try:
+                datetime.fromisoformat(scheduled)
+                valid_date = True
+            except ValueError:
+                valid_date = False
+            if not (0 < len(asset) <= 100 and 0 < len(engineer) <= 80 and
+                    0 < len(description) <= 1000 and priority in ("HIGH", "MEDIUM", "LOW") and valid_date):
+                error = "Check the maintenance task fields and try again."
+            else:
+                conn.execute("""
+                    INSERT INTO maintenance_tasks
+                    (created_at, asset_id, priority, assigned_to, scheduled_for, description, status)
+                    VALUES (?, ?, ?, ?, ?, ?, 'SCHEDULED')
+                """, (utc_timestamp(), asset, priority, engineer, scheduled, description))
+                notice = "Maintenance task scheduled."
+        elif action == "complete":
+            try:
+                task_id = int(request.form.get("task_id", ""))
+            except ValueError:
+                abort(400, "Invalid task ID")
+            notes = request.form.get("completion_notes", "").strip()
+            if not (0 < len(notes) <= 1000):
+                error = "Enter the work performed."
+            else:
+                result = conn.execute("""
+                    UPDATE maintenance_tasks
+                    SET status = 'COMPLETED', completed_at = ?, completion_notes = ?
+                    WHERE id = ? AND status = 'SCHEDULED'
+                """, (utc_timestamp(), notes, task_id))
+                if result.rowcount:
+                    notice = "Maintenance task marked complete."
+                else:
+                    error = "Task not found or already completed."
+        else:
+            abort(400, "Unknown maintenance action")
+    return redirect(url_for("dashboard", page="maintenance", notice=notice, error=error), code=303)
+
+
 @app.route("/", methods=["GET", "POST"])
 def dashboard():
 
@@ -1655,6 +1889,7 @@ def dashboard():
             "Machine Failure Prediction",
             "Estimate machine failure risk using the trained Random Forest model."
         ),
+        "maintenance": ("Maintenance Management", "Acknowledge alerts and manage maintenance work."),
         "ai4i_replay": (
             "Machine Failure Prediction – Replay Results",
             "Review machine-failure predictions generated from replayed machine-operation records."
@@ -1748,18 +1983,86 @@ def dashboard():
                 "Check the saved model file. Details: " + str(error)
             )
 
+    maintenance_alerts = []
+    maintenance_tasks = []
+    m_severity = request.args.get("m_severity", "all")
+    if m_severity not in ("all", "HIGH", "MEDIUM", "LOW"):
+        m_severity = "all"
+    m_status = request.args.get("m_status", "all")
+    if m_status not in ("all", "acknowledged", "unacknowledged"):
+        m_status = "all"
+    m_limit = request.args.get("m_limit", "50")
+    if m_limit not in ("20", "50", "100", "all"):
+        m_limit = "50"
+    try:
+        m_page = max(1, int(request.args.get("m_page", "1")))
+    except (ValueError, TypeError):
+        m_page = 1
+    m_total, m_start, m_end, m_pages = 0, 0, 0, 1
+    maintenance_notice = request.args.get("notice", "")[:150]
+    maintenance_error = request.args.get("error", "")[:150]
+    csrf_token = maintenance_csrf_token() if page == "maintenance" else None
+
     with sqlite3.connect(DB_PATH) as conn:
 
         cursor = conn.cursor()
+        if page == "maintenance":
+            create_maintenance_tables(conn)
+            where = []
+            params = []
+            if m_severity != "all":
+                where.append("a.severity = ?")
+                params.append(m_severity)
+            if m_status == "acknowledged":
+                where.append("ack.alert_id IS NOT NULL")
+            elif m_status == "unacknowledged":
+                where.append("ack.alert_id IS NULL")
+            where_sql = " WHERE " + " AND ".join(where) if where else ""
+            from_sql = " FROM alerts a LEFT JOIN alert_acknowledgements ack ON ack.alert_id = a.id"
+            m_total = cursor.execute(
+                "SELECT COUNT(*)" + from_sql + where_sql, params
+            ).fetchone()[0]
+            m_size = 100 if m_limit == "all" else int(m_limit)
+            m_pages = max(1, (m_total + m_size - 1) // m_size)
+            m_page = min(m_page, m_pages)
+            offset = (m_page - 1) * m_size
+            maintenance_alerts = cursor.execute(
+                "SELECT a.id, a.timestamp, a.sensor, a.severity, a.asset_id, a.source, "
+                "ack.operator, ack.acknowledged_at" + from_sql + where_sql +
+                " ORDER BY a.id DESC LIMIT ? OFFSET ?",
+                params + [m_size, offset]
+            ).fetchall()
+            m_start = offset + 1 if m_total else 0
+            m_end = offset + len(maintenance_alerts)
+            maintenance_tasks = cursor.execute("""
+                SELECT id, created_at, asset_id, priority, assigned_to, scheduled_for,
+                       description, status, completed_at, completion_notes
+                FROM maintenance_tasks ORDER BY id DESC LIMIT 100
+            """).fetchall()
 
-        # Latest 30 readings for graphs
+        def parse_units(raw):
+            try:
+                return {k: v for k, v in json.loads(raw or "{}").items() if isinstance(v, str)}
+            except (ValueError, TypeError, AttributeError):
+                return {}
+
+        cursor.execute("SELECT asset_id, source, run_id, units_json, synthetic_fields_json FROM sensor_readings ORDER BY id DESC LIMIT 1")
+        context = cursor.fetchone()
+        latest_asset, latest_source, latest_sensor_run, raw_units, raw_synthetic = context or (None, None, None, None, None)
+        display_units = {sensor: parse_units(raw_units).get(sensor, "unit unknown") for sensor in SENSORS}
+        try:
+            latest_synthetic = json.loads(raw_synthetic or "[]")
+        except (ValueError, TypeError):
+            latest_synthetic = []
+        # Latest 30 readings for graphs, restricted to a single source and run.
         cursor.execute("""
             SELECT timestamp, temperature, vibration,
                    humidity, pressure, current
             FROM sensor_readings
+            WHERE asset_id IS ? AND source IS ? AND run_id IS ? AND units_json IS ?
             ORDER BY id DESC
             LIMIT 30
-        """)
+        """, (latest_asset, latest_source, latest_sensor_run, raw_units))
 
         graph_readings = cursor.fetchall()
 
@@ -1782,13 +2085,20 @@ def dashboard():
 
         cursor.execute("""
             SELECT timestamp, temperature, vibration,
-                   humidity, pressure, current
+                   humidity, pressure, current, asset_id, source, units_json, synthetic_fields_json
             FROM sensor_readings
             ORDER BY id DESC
             LIMIT ? OFFSET ?
         """, (history_page_size, readings_offset))
 
-        readings = cursor.fetchall()
+        readings = []
+        for row in cursor.fetchall():
+            row_units = parse_units(row[8])
+            try:
+                synthetic = json.loads(row[9] or "[]")
+            except (ValueError, TypeError):
+                synthetic = []
+            readings.append([row[0], row[6] or "Unknown", row[7] or "Unknown"] + [f"{row[i]} {row_units.get(sensor, 'unit unknown')}" + (" (synthetic)" if sensor in synthetic else "") for i, sensor in enumerate(SENSORS, 1)])
         readings_start = readings_offset + 1 if readings_total else 0
         readings_end = min(readings_offset + len(readings), readings_total)
 
@@ -1822,8 +2132,9 @@ def dashboard():
         cursor.execute("""
             SELECT sensor, severity, timestamp
             FROM alerts
+            WHERE asset_id IS ? AND source IS ? AND run_id IS ?
             ORDER BY id DESC
-        """)
+        """, (latest_asset, latest_source, latest_sensor_run))
 
         last_alerts = {}
 
@@ -1867,7 +2178,7 @@ def dashboard():
 
         alert_query = """
             SELECT timestamp, sensor, reading, z_score,
-                   severity, recommendation
+                   severity, recommendation, unit, asset_id, source
             FROM alerts
             WHERE 1 = 1
         """
@@ -1951,6 +2262,8 @@ def dashboard():
             "start_timestamp": None,
             "end_timestamp": None
         }
+        latest_run_id = None
+        legacy_prediction_count = 0
         prediction_history = []
         predictions_total = 0
         predictions_total_pages = 1
@@ -2003,10 +2316,13 @@ def dashboard():
                 "true_negatives": prediction_true_negatives
             }
 
-            cursor.execute("SELECT MAX(id) FROM predictions WHERE udi = 1")
-            latest_replay_start_id = cursor.fetchone()[0]
+            cursor.execute("SELECT COUNT(*) FROM predictions WHERE run_id IS NULL OR run_id = ''")
+            legacy_prediction_count = cursor.fetchone()[0]
+            cursor.execute("SELECT run_id FROM predictions WHERE source = 'ai4i_replay' AND run_id IS NOT NULL AND run_id != '' ORDER BY id DESC LIMIT 1")
+            latest_run = cursor.fetchone()
+            latest_run_id = latest_run[0] if latest_run else None
 
-            if latest_replay_start_id is not None:
+            if latest_run_id is not None:
                 cursor.execute("""
                     SELECT
                         COUNT(*),
@@ -2019,8 +2335,8 @@ def dashboard():
                         MIN(timestamp),
                         MAX(timestamp)
                     FROM predictions
-                    WHERE id >= ?
-                """, (latest_replay_start_id,))
+                    WHERE run_id = ? AND source = 'ai4i_replay'
+                """, (latest_run_id,))
 
                 (
                     latest_total,
@@ -2070,7 +2386,7 @@ def dashboard():
                     threshold,
                     predicted_failure,
                     actual_failure,
-                    correct
+                    correct, run_id
                 FROM predictions
                 ORDER BY id DESC
                 LIMIT ? OFFSET ?
@@ -2088,11 +2404,29 @@ def dashboard():
         HTML,
         page=page,
         pages=PAGES,
+        maintenance_alerts=maintenance_alerts,
+        maintenance_tasks=maintenance_tasks,
+        m_severity=m_severity,
+        m_status=m_status,
+        m_limit=m_limit,
+        m_page=m_page,
+        m_pages=m_pages,
+        m_total=m_total,
+        m_start=m_start,
+        m_end=m_end,
+        maintenance_notice=maintenance_notice,
+        maintenance_error=maintenance_error,
+        csrf_token=csrf_token,
         page_title=page_title,
         page_description=page_description,
         sensors=SENSORS,
         sensor_labels=SENSOR_LABELS,
-        units=UNITS,
+        units=display_units,
+        latest_run_id=latest_run_id,
+        legacy_prediction_count=legacy_prediction_count,
+        latest_source=latest_source,
+        latest_asset=latest_asset,
+        latest_synthetic=latest_synthetic,
         latest=latest,
         last_alerts=last_alerts,
         alert_counts=alert_counts,
@@ -2133,4 +2467,4 @@ def dashboard():
 
 
 if __name__ == "__main__":
-    app.run(debug=True, use_reloader=False)
+    app.run(debug=False, use_reloader=False)
