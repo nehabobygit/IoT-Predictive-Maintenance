@@ -1,0 +1,168 @@
+{
+    "evaluation_type": "simulated_sensor_anomaly_detection",
+    "split_method": "fixed_run_ids",
+    "notes": "Run IDs are fixed to prevent automatic reassignment. This does not independently establish that the test run was excluded from earlier detector tuning.",
+    "runs": [
+        {
+            "role": "DEVELOPMENT",
+            "run_id": "6bb6fc17-5df6-466a-a13e-d7d6b4c87eb3",
+            "readings": 564,
+            "baseline": {
+                "tp": 159,
+                "fp": 181,
+                "fn": 87,
+                "tn": 137,
+                "precision": 0.4676,
+                "recall": 0.6463,
+                "f1": 0.5427
+            },
+            "hybrid": {
+                "tp": 172,
+                "fp": 20,
+                "fn": 74,
+                "tn": 298,
+                "precision": 0.8958,
+                "recall": 0.6992,
+                "f1": 0.7854
+            }
+        },
+        {
+            "role": "TEST",
+            "run_id": "78d0f37d-40fa-47ba-aabe-a39802c766a5",
+            "readings": 418,
+            "baseline": {
+                "tp": 120,
+                "fp": 141,
+                "fn": 56,
+                "tn": 101,
+                "precision": 0.4598,
+                "recall": 0.6818,
+                "f1": 0.5492
+            },
+            "hybrid": {
+                "tp": 121,
+                "fp": 18,
+                "fn": 55,
+                "tn": 224,
+                "precision": 0.8705,
+                "recall": 0.6875,
+                "f1": 0.7683
+            }
+        },
+        {
+            "role": "SUPPLEMENTARY",
+            "run_id": "bbbe28c6-fbee-4b41-a691-e831fda135be",
+            "readings": 129,
+            "baseline": {
+                "tp": 32,
+                "fp": 41,
+                "fn": 20,
+                "tn": 36,
+                "precision": 0.4384,
+                "recall": 0.6154,
+                "f1": 0.512
+            },
+            "hybrid": {
+                "tp": 36,
+                "fp": 2,
+                "fn": 16,
+                "tn": 75,
+                "precision": 0.9474,
+                "recall": 0.6923,
+                "f1": 0.8
+            }
+        },
+        {
+            "role": "SUPPLEMENTARY",
+            "run_id": "da77133d-66a6-4616-b511-0ff7d150fe00",
+            "readings": 56,
+            "baseline": {
+                "tp": 14,
+                "fp": 17,
+                "fn": 9,
+                "tn": 16,
+                "precision": 0.4516,
+                "recall": 0.6087,
+                "f1": 0.5185
+            },
+            "hybrid": {
+                "tp": 12,
+                "fp": 3,
+                "fn": 11,
+                "tn": 30,
+                "precision": 0.8,
+                "recall": 0.5217,
+                "f1": 0.6316
+            }
+        },
+        {
+            "role": "SUPPLEMENTARY",
+            "run_id": "6076b72c-6be2-4d20-8d7c-01bafbc9daf4",
+            "readings": 49,
+            "baseline": {
+                "tp": 13,
+                "fp": 14,
+                "fn": 5,
+                "tn": 17,
+                "precision": 0.4815,
+                "recall": 0.7222,
+                "f1": 0.5778
+            },
+            "hybrid": {
+                "tp": 12,
+                "fp": 3,
+                "fn": 6,
+                "tn": 28,
+                "precision": 0.8,
+                "recall": 0.6667,
+                "f1": 0.7273
+            }
+        },
+        {
+            "role": "SUPPLEMENTARY",
+            "run_id": "932af96f-756a-4e9a-b11e-bcbd96d574a9",
+            "readings": 15,
+            "baseline": {
+                "tp": 4,
+                "fp": 3,
+                "fn": 2,
+                "tn": 6,
+                "precision": 0.5714,
+                "recall": 0.6667,
+                "f1": 0.6154
+            },
+            "hybrid": {
+                "tp": 5,
+                "fp": 1,
+                "fn": 1,
+                "tn": 8,
+                "precision": 0.8333,
+                "recall": 0.8333,
+                "f1": 0.8333
+            }
+        },
+        {
+            "role": "SUPPLEMENTARY",
+            "run_id": "e572f7bb-20e9-49d8-993e-59ffbbf84966",
+            "readings": 5,
+            "baseline": {
+                "tp": 0,
+                "fp": 0,
+                "fn": 1,
+                "tn": 4,
+                "precision": 0,
+                "recall": 0.0,
+                "f1": 0.0
+            },
+            "hybrid": {
+                "tp": 1,
+                "fp": 0,
+                "fn": 0,
+                "tn": 4,
+                "precision": 1.0,
+                "recall": 1.0,
+                "f1": 1.0
+            }
+        }
+    ]
+}
