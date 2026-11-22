@@ -1,4 +1,5 @@
 import os
+from pathlib import Path
 
 
 def configure_mqtt_auth(client, role):
@@ -17,3 +18,13 @@ def configure_mqtt_auth(client, role):
         )
 
     client.username_pw_set(username, password)
+
+    # Enable TLS with certificate verification
+    certificate = Path.home() / "mqtt_tls" / "server.crt"
+
+    if not certificate.is_file():
+        raise FileNotFoundError(
+            f"MQTT TLS certificate not found: {certificate}"
+        )
+
+    client.tls_set(ca_certs=str(certificate))

@@ -25,7 +25,7 @@ except ImportError:
     from mqtt_security import configure_mqtt_auth
 
 BROKER = "localhost"
-PORT = 1883
+PORT = 8883
 TOPIC = "factory/sensors"
 
 BASE_DIR = Path(__file__).resolve().parent.parent

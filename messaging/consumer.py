@@ -5,6 +5,7 @@ import sqlite3
 import sys
 import time
 from pathlib import Path
+from messaging.model_security import verify_ai4i_model
 
 import paho.mqtt.client as mqtt
 
@@ -38,7 +39,7 @@ except ImportError:
     from mqtt_security import configure_mqtt_auth
 
 BROKER = "localhost"
-PORT = 1883
+PORT = 8883
 TOPIC = "factory/sensors"
 AI4I_TOPIC = "factory/ai4i/replay"
 
@@ -216,6 +217,8 @@ def load_ai4i_model():
         return ai4i_model
     if not MODEL_PATH.exists():
         raise FileNotFoundError(f"AI4I model not found: {MODEL_PATH}")
+
+    verify_ai4i_model(MODEL_PATH)
 
     with open(MODEL_PATH, "rb") as file:
         model = pickle.load(file)

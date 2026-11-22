@@ -304,22 +304,27 @@ These fields improve traceability and help distinguish simulated readings from d
 
 Duplicate event detection is supported.
 
+
 ### MQTT Security
-The project requires environment-based MQTT client passwords. The consumer uses `maintenance_consumer` / `MQTT_CONSUMER_PASSWORD`; both publishers use `maintenance_publisher` / `MQTT_PUBLISHER_PASSWORD`. See Section 13 for CMD setup.
 
-However:
+The project uses authenticated MQTT communication with TLS encryption.
 
-- Broker authentication requires separate configuration.
+- MQTT TLS port: `8883`
+- Broker: Mosquitto 2.1.2
+- Consumer account: `maintenance_consumer`
+- Publisher account: `maintenance_publisher`
+- Passwords are supplied through environment variables.
+- Broker ACLs restrict publishers to writing and consumers to reading.
+- TLS certificates are stored locally and are not included in the repository.
 
-- TLS encryption is not yet configured.
+The local development environment uses a self-signed TLS certificate. Each installation must configure its own broker credentials, ACL rules and trusted certificate.
 
-- Broker access-control lists are not included in the repository.
+The Python MQTT clients verify the broker certificate before connecting.
 
-- The system is intended to run in a trusted local development environment.
+The unencrypted port `1883` remains available locally for compatibility and should be disabled when no longer required.
 
-Do not expose an unsecured MQTT broker to the public internet.
+Do not commit passwords, private keys or broker authentication files.
 
-Do not commit passwords, authentication files or environment secrets.
 
 ---
 ## 8. Database
@@ -459,12 +464,20 @@ The model missed 20 actual failures in this test.
 
 The model predicts a binary failure classification. It does not predict remaining useful life, exact failure time or expected downtime.
 
+
 ### Model File
+
+The trained AI4I Random Forest model is stored at:
+
 `models/ai4i_random_forest.pkl`
 
-The saved model is loaded for prediction.
+Before loading the model, the consumer and dashboard verify its SHA-256 checksum using `messaging/model_security.py`.
 
-Python pickle files must only be loaded from trusted sources. Model integrity verification has not yet been implemented.
+If the model has been modified, loading is rejected.
+
+The expected checksum can be configured using the `AI4I_MODEL_SHA256` environment variable.
+
+Only load model files from trusted sources. SHA-256 verification detects unexpected changes but does not make untrusted pickle files safe.
 
 ---
 ## 11. Benchmark Datasets
@@ -625,7 +638,29 @@ The MQTT clients require the following broker-side accounts:
 | Consumer | `maintenance_consumer` | `MQTT_CONSUMER_PASSWORD` |
 | Both publishers | `maintenance_publisher` | `MQTT_PUBLISHER_PASSWORD` |
 
-**Broker configuration is separate from the Python application.** Before starting the application, configure Mosquitto with both accounts and their passwords using a Mosquitto password file and an appropriate local broker configuration. The values entered into the CMD prompts must match the broker's passwords. Do not commit the password file or passwords. The repository does not provide a ready-to-run broker authentication configuration, TLS or ACLs; an operator must set these up separately.
+
+### Local MQTT TLS Configuration
+
+The MQTT clients connect to `localhost` on port `8883` using TLS.
+
+Before running the application:
+
+1. Install Mosquitto and create the `maintenance_consumer` and `maintenance_publisher` accounts.
+2. Configure a local TLS listener on port `8883`.
+3. Create a TLS certificate with `localhost` as a valid hostname.
+4. Configure broker ACLs so publishers can write and consumers can read the required topics.
+5. Place the trusted broker certificate at:
+
+   `%USERPROFILE%\mqtt_tls\server.crt`
+
+6. Restart Mosquitto after updating its configuration.
+
+The certificate and broker credentials must be configured separately on each computer. They are not distributed through GitHub.
+
+The MQTT client passwords must match the corresponding Mosquitto accounts.
+
+
+**Broker configuration is separate from the Python application.** Before starting the application, configure Mosquitto with both accounts and their passwords using a Mosquitto password file and an appropriate local broker configuration. The values entered into the CMD prompts must match the broker's passwords. Do not commit the password file or passwords. The repository does not bundle broker credentials, TLS certificates or ACL files. These must be configured locally.
 
 Start Mosquitto with the authenticated local configuration you created, for example:
 
@@ -799,12 +834,27 @@ Implemented controls include:
 
 The consumer uses MQTT username `maintenance_consumer`; the publishers use `maintenance_publisher`. Mosquitto must be configured separately to validate those accounts. The login is basic local authentication; it is **not** role-based access control or a production identity system.
 
-Security limitations include:
 
-- No configured MQTT TLS encryption or bundled broker ACL configuration
-- No role-based access control or completed production security audit
-- No cryptographic integrity verification for loaded pickle models
-- CMD `set /p` input is visible on screen; environment variables are scoped to the CMD process and should not be considered a secure secret vault
+### Security Limitations
+
+The following security controls have been implemented and locally tested:
+
+- MQTT username/password authentication
+- TLS-encrypted MQTT communication on port 8883
+- Broker access-control lists (ACLs)
+- SHA-256 integrity verification before loading the AI4I model
+- Dashboard login authentication
+- CSRF protection for maintenance actions
+
+Remaining limitations:
+
+- The unencrypted MQTT port 1883 remains enabled locally.
+- TLS uses a locally generated self-signed certificate.
+- Dashboard authentication does not support multiple user roles.
+- No production security audit has been performed.
+
+The project is intended for local academic demonstration, not production deployment.
+
 
 Never commit passwords, Mosquitto password files or secret environment settings. Use the system only in a trusted development environment until these limitations are addressed.
 
@@ -827,7 +877,7 @@ The main limitations are:
 
 7. The system predicts failure classification, not time-to-failure.
 
-8. Production MQTT security is incomplete.
+8. MQTT security is configured for local testing; production security hardening has not been completed.
 
 9. Dashboard authentication is implemented for local use, but role-based access control is not.
 
@@ -839,11 +889,7 @@ The main limitations are:
 ## 19. Future Improvements
 Potential future work includes:
 
-- MQTT TLS encryption and broker ACLs
-
 - Stronger dashboard authentication and user roles
-
-- Secure model integrity verification
 
 - Industrial threshold calibration
 

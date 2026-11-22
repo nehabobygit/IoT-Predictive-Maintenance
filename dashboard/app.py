@@ -7,6 +7,7 @@ import hmac
 from datetime import datetime, timezone
 from pathlib import Path
 from flask import Flask, render_template_string, request, redirect, url_for, session, abort
+from messaging.model_security import verify_ai4i_model
 
 app = Flask(__name__)
 app.secret_key = secrets.token_hex(32)  # Local-session CSRF protection; restart invalidates sessions.
@@ -2367,6 +2368,8 @@ def dashboard():
                 process - air,
                 torque * speed / 1000
             ]
+
+            verify_ai4i_model(MODEL_PATH)
 
             with open(MODEL_PATH, "rb") as model_file:
                 model = pickle.load(model_file)
