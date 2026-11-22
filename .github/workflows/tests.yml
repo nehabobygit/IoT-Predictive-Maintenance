@@ -1,0 +1,39 @@
+
+name: Python Automated Tests
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+
+      - name: Check Python syntax
+        run: |
+          python -m compileall -q dashboard detection messaging sensors
+
+      - name: Run unit and integration tests
+        run: |
+          python -m unittest \
+            detection.test_consumer_integration \
+            detection.test_ai4i_integration \
+            detection.test_detector \
+            -v
