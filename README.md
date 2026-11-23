@@ -1,926 +1,241 @@
 # IoT-Based Predictive Maintenance System
-## 1. Project Overview
-This project is an IoT-based predictive maintenance prototype designed to monitor industrial equipment, detect abnormal sensor behaviour, generate maintenance alerts and support machine-failure prediction.
 
-The system combines:
+An end-to-end industrial equipment monitoring prototype that simulates five sensors, streams readings through MQTT, detects abnormal behaviour, records maintenance alerts, and provides a web dashboard with machine-failure prediction.
 
-- IoT sensor simulation
+## Features
 
-- MQTT-based communication
+- **Live sensor monitoring:** temperature, vibration, humidity, pressure and electrical current.
+- **MQTT streaming:** authenticated, TLS-enabled communication between the simulated publisher, Mosquitto broker and consumer.
+- **Hybrid anomaly detection:** temperature spikes, abnormal temperature increases, irregular vibration, and sustained humidity drift; additional simulated pressure/current faults support monitoring tests.
+- **Maintenance alerts:** severity levels, sensor-specific recommendations, alert history and maintenance management.
+- **Web dashboard:** Overview, Live Sensors, Maintenance Alerts, Reading History, Machine Failure Prediction, Replay Prediction Results and Maintenance Management.
+- **Failure classification:** a custom NumPy-based Random Forest trained on the AI4I 2020 dataset.
+- **Reproducibility:** evaluation scripts, automated tests, dataset attribution and saved evaluation results.
 
-- Real-time anomaly detection
+## System architecture
 
-- SQLite database storage
-
-- Flask-based monitoring dashboard
-
-- Maintenance alert management
-
-- Machine-learning-based failure classification
-
-- Dataset replay and performance evaluation
-
-The project is intended for academic research and demonstration. It has not been validated for production deployment in an industrial environment.
-
----
-## 2. Project Objectives
-1. Monitor industrial equipment using multiple sensor readings.
-
-2. Detect abnormal operating conditions using statistical methods.
-
-3. Generate maintenance alerts with severity levels.
-
-4. Provide a dashboard for monitoring equipment conditions.
-
-5. Support maintenance acknowledgement and status tracking.
-
-6. Predict machine failures using a trained machine-learning model.
-
-7. Evaluate detection performance using benchmark datasets.
-
-8. Maintain traceable sensor events and prediction records.
-
----
-## 3. System Architecture
-### A. Live Sensor Monitoring
 ```text
+Simulated sensors (5)
+        |
+        v
+MQTT Publisher --> Mosquitto Broker --> MQTT Consumer
+                                            |
+                                  Hybrid anomaly detection
+                                            |
+                                            v
+                                       SQLite database
+                                            |
+                                            v
+                                  Flask monitoring dashboard
+                                            |
+                                   Alerts and maintenance
 
-Five Simulated Sensors
-
-         |
-
-         v
-
-    MQTT Publisher
-
-         |
-
-         v
-
-   Mosquitto Broker
-
-         |
-
-         v
-
-    MQTT Consumer
-
-         |
-
-         v
-
-  Anomaly Detection
-
-         |
-
-         v
-
-    SQLite Database
-
-         |
-
-         v
-
-    Flask Dashboard
-
-         |
-
-         v
-
- Maintenance Actions
-
+AI4I dataset --> Feature processing --> Random Forest --> Failure classification
 ```
 
-The five monitored parameters are:
+The AI4I failure-classification workflow is separate from the live five-sensor anomaly-detection workflow.
 
-| Sensor | Unit |
+## Quick start: run the project on Windows
 
-|---|---|
+**Prerequisites:** Python 3.12, Git, Mosquitto MQTT broker and Windows Command Prompt (CMD). The project was tested on Windows 10 ARM64 with Python 3.12.10. Use the **same cloned project folder** for every CMD window so all processes share the same local SQLite database.
 
-| Temperature | °C |
+### 1. Clone and install
 
-| Vibration | mm/s |
-
-| Humidity | % |
-
-| Pressure | bar |
-
-| Current | A |
-
-The simulated publisher generates sensor readings and introduces abnormal conditions to test the monitoring system.
-
-### B. Machine-Failure Prediction
-```text
-
-AI4I 2020 Dataset
-
-        |
-
-        v
-
- Data Preprocessing
-
-        |
-
-        v
-
-Feature Engineering
-
-        |
-
-        v
-
-Random Forest Model
-
-        |
-
-        v
-
- Failure Probability
-
-        |
-
-        v
-
-Normal / Failure Decision
-
-```
-
-The machine-learning prediction module uses AI4I machine operating parameters.
-
-The AI4I prediction workflow and the five-sensor monitoring workflow are separate. They do not currently form one unified industrial prediction model.
-
----
-## 4. Technologies Used
-| Technology | Purpose |
-
-|---|---|
-
-| Python 3.12.10 | Application development |
-
-| Flask 3.1.3 | Web dashboard |
-
-| Paho-MQTT 2.2.0 | MQTT communication |
-
-| Mosquitto | MQTT message broker |
-
-| SQLite | Database storage |
-
-| NumPy 2.5.4 | Numerical computation and machine learning |
-
-| HTML, CSS and JavaScript | Dashboard interface |
-
-| Git and GitHub | Version control |
-
-The final AI4I Random Forest model uses a custom Python and NumPy implementation.
-
-Scikit-learn is not required to load and use the final AI4I model.
-
-### Tested Development Environment
-- Windows 10 ARM64
-
-- Python 3.12.10
-
-- Local Mosquitto MQTT broker
-
-- Python virtual environment
-
-Other operating systems and Python versions have not been fully verified.
-
----
-## 5. Sensor Simulation
-The system generates five sensor measurements.
-
-Typical simulated ranges:
-
-| Sensor | Normal simulation range |
-
-|---|---|
-
-| Temperature | 35–45 °C |
-
-| Vibration | 1–5 mm/s |
-
-| Humidity | 30–70% |
-
-| Pressure | 2–6 bar |
-
-| Current | 5–20 A |
-
-The simulation introduces conditions such as:
-
-- Sudden temperature spikes
-
-- Gradual temperature increases
-
-- Vibration spikes
-
-- Humidity drift
-
-- Pressure drops
-
-- Current surges
-
-These simulated faults are used to test the monitoring and alert pipeline.
-
-The simulated ranges are demonstration values and are not validated operating limits for a particular industrial machine.
-
----
-## 6. Anomaly Detection
-The live monitoring system uses rolling Z-score analysis.
-
-The Z-score measures how far a sensor reading differs from the recent average relative to the standard deviation.
-
-The current configuration uses:
-
-| Parameter | Value |
-
-|---|---|
-
-| Rolling window | 10 readings |
-
-| Z-score threshold | 1.5 |
-
-| Alert cooldown | 30 seconds |
-
-An anomaly is detected when the absolute Z-score exceeds the configured threshold.
-
-### Alert Severity
-| Absolute Z-score | Severity |
-
-|---|---|
-
-| Below 3.5, but above detection threshold | LOW |
-
-| 3.5 to below 5.0 | MEDIUM |
-
-| 5.0 or above | HIGH |
-
-The system generates maintenance recommendations according to the affected sensor.
-
-### Important Limitation
-The threshold of 1.5 is an experimental configuration. It has not been established as an optimal threshold for real industrial equipment.
-
-False alarms remain a significant limitation.
-
----
-## 7. MQTT Communication
-The monitoring system uses the following MQTT topics:
-
-| Topic | Purpose |
-
-|---|---|
-
-| `factory/sensors` | Simulated sensor measurements |
-
-| `factory/ai4i/replay` | AI4I dataset replay |
-
-The MQTT consumer receives incoming events, validates their contents, processes readings and stores relevant information.
-
-### Event Metadata
-The updated message contract supports:
-
-- Schema version
-
-- Event ID
-
-- Run ID
-
-- Asset ID
-
-- Data source
-
-- Event timestamp
-
-- Source timestamp
-
-- Sensor units
-
-- Source channel metadata
-
-- Synthetic-field metadata
-
-These fields improve traceability and help distinguish simulated readings from dataset replay events.
-
-Duplicate event detection is supported.
-
-
-### MQTT Security
-
-The project uses authenticated MQTT communication with TLS encryption.
-
-- MQTT TLS port: `8883`
-- Broker: Mosquitto 2.1.2
-- Consumer account: `maintenance_consumer`
-- Publisher account: `maintenance_publisher`
-- Passwords are supplied through environment variables.
-- Broker ACLs restrict publishers to writing and consumers to reading.
-- TLS certificates are stored locally and are not included in the repository.
-
-The local development environment uses a self-signed TLS certificate. Each installation must configure its own broker credentials, ACL rules and trusted certificate.
-
-The Python MQTT clients verify the broker certificate before connecting.
-
-The unencrypted port `1883` remains available locally for compatibility and should be disabled when no longer required.
-
-Do not commit passwords, private keys or broker authentication files.
-
-
----
-## 8. Database
-SQLite stores monitoring and prediction information.
-
-The principal database tables include:
-
-### Sensor Readings
-Stores sensor values, timestamps, asset information, source information and event metadata.
-
-### Alerts
-Stores detected anomalies, severity, affected sensor, reading, recommendations and event metadata.
-
-### Predictions
-Stores AI4I machine-failure predictions, confidence scores and relevant machine information.
-
-The project also includes database migration scripts:
-
-- `detection/migrate_project_metadata.py`
-
-- `detection/migrate_prediction_metadata_v2.py`
-
-These scripts support the additional metadata fields introduced during development.
-
-The local SQLite database is excluded from GitHub.
-
-A fresh installation does not contain the historical monitoring data generated on the development machine.
-
----
-## 9. Flask Dashboard
-The dashboard provides the following functionality.
-
-### Overview
-Displays monitoring summaries and recent sensor conditions.
-
-### Sensors
-Displays sensor readings and charts for temperature, vibration, humidity, pressure and current.
-
-### Alerts
-Displays anomaly alerts and severity information.
-
-### Reading History
-Displays stored sensor readings.
-
-### Prediction
-Allows users to enter AI4I machine parameters and obtain a failure classification.
-
-### Maintenance Management
-The maintenance interface supports:
-
-- Viewing maintenance alerts
-
-- Acknowledging alerts
-
-- Scheduling maintenance
-
-- Updating maintenance status
-
-- Filtering maintenance records
-
-- Paginated record viewing
-
-Maintenance actions use CSRF protection.
-
-### Dashboard Security Limitation
-The dashboard provides environment-configured username/password login. Role-based access control is not implemented.
-
-It should not be exposed publicly without additional security hardening, TLS, appropriate access controls and deployment review.
-
----
-## 10. AI4I Machine-Failure Prediction
-The machine-learning component uses the AI4I 2020 Predictive Maintenance dataset.
-
-### Dataset
-| Property | Value |
-
-|---|---|
-
-| Total records | 10,000 |
-
-| Training records | 6,999 |
-
-| Validation records | 1,500 |
-
-| Test records | 1,501 |
-
-| Model | Custom Random Forest |
-
-| Trees | 25 |
-
-| Maximum depth | 8 |
-
-| Decision threshold | 0.76 |
-
-The model uses machine parameters including:
-
-- Air temperature
-
-- Process temperature
-
-- Rotational speed
-
-- Torque
-
-- Tool wear
-
-- Machine type
-
-Additional engineered features include temperature difference and torque-speed interaction.
-
-### Test-Set Results
-| Metric | Result |
-
-|---|---:|
-
-| Accuracy | 97.80% |
-
-| Precision | 70.45% |
-
-| Recall | 60.78% |
-
-| F1-score | 65.26% |
-
-| True positives | 31 |
-
-| False positives | 13 |
-
-| False negatives | 20 |
-
-| True negatives | 1,437 |
-
-These results come from the held-out AI4I test split.
-
-The model missed 20 actual failures in this test.
-
-****High accuracy does not mean that all machine failures are detected.****
-
-The model predicts a binary failure classification. It does not predict remaining useful life, exact failure time or expected downtime.
-
-
-### Model File
-
-The trained AI4I Random Forest model is stored at:
-
-`models/ai4i_random_forest.pkl`
-
-Before loading the model, the consumer and dashboard verify its SHA-256 checksum using `messaging/model_security.py`.
-
-If the model has been modified, loading is rejected.
-
-The expected checksum can be configured using the `AI4I_MODEL_SHA256` environment variable.
-
-Only load model files from trusted sources. SHA-256 verification detects unexpected changes but does not make untrusted pickle files safe.
-
----
-## 11. Benchmark Datasets
-The project uses three datasets for different purposes.
-
-### AI4I 2020
-Used to train and evaluate the machine-failure classification model.
-
-### SKAB
-Used to evaluate anomaly detection using recorded industrial sensor sequences.
-
-### NAB
-Used for additional anomaly-detection experiments.
-
-The NAB dataset is not bundled in the GitHub repository because of its size.
-
-Dataset sources and licensing information are documented in:
-
-`DATASET_ATTRIBUTION.md`
-
-### Dataset Licensing
-The bundled SKAB material includes GPL-3.0-licensed content.
-
-Redistribution must comply with the applicable licence obligations.
-
-The AI4I dataset uses CC BY 4.0 licensing, and NAB includes MIT-licensed material.
-
----
-## 12. SKAB Anomaly Detection Evaluation
-The project includes:
-
-`detection/evaluate_skab_final.py`
-
-This script evaluates selected SKAB sequences and compares two approaches:
-
-1. Rolling Z-score
-
-2. Fixed-reference detection
-
-The evaluation includes:
-
-- Per-sequence results
-
-- Confusion matrices
-
-- Precision
-
-- Recall
-
-- F1-score
-
-- Accuracy
-
-- False-positive rates
-
-- False positives per 1,000 readings
-
-- Anomaly episode detection
-
-- Detection delays
-
-### Overall Evaluation Results
-| Metric | Rolling Z-score | Fixed Reference |
-
-|---|---:|---:|
-
-| Precision | 39.02% | 38.16% |
-
-| Recall | 60.22% | 34.14% |
-
-| F1-score | 47.35% | 36.04% |
-
-| Accuracy | 48.60% | 53.48% |
-
-| False-positive rate | 58.64% | 34.47% |
-
-| False positives per 1,000 readings | 361.29 | 212.37 |
-
-| Detected anomaly episodes | 3 | 2 |
-
-| Missed anomaly episodes | 0 | 1 |
-
-| Mean detection delay (samples) | 0.67 | 111.00 |
-
-The evaluation uses selected sequences:
-
-- `0.csv`
-
-- `3.csv`
-
-- `11.csv`
-
-These results are not representative of all industrial machines or all SKAB sequences.
-
-### Evaluation Conclusion
-Rolling Z-score achieved better recall and episode detection than the fixed-reference approach in this evaluation.
-
-However, both methods generated substantial false alarms.
-
-Further calibration and validation are necessary before using the detection methods for operational maintenance decisions.
-
-### Saved Evaluation Report
-`results/skab_final_evaluation.json`
-
-To reproduce the evaluation:
-
-```cmd
-
-python detection\evaluate_skab_final.py
-
-```
-
----
-## 13. Installation and Setup
-
-### Prerequisites
-
-- Python 3.12.10 (tested on Windows 10 ARM64)
-- Git
-- Mosquitto MQTT broker, installed separately
-- Windows Command Prompt (CMD)
-
-Other operating systems and Python versions have not been fully verified. All commands below assume you are in the **same cloned project folder**. Do not mix processes running from different clones: each clone has its own SQLite database.
-
-### Step 1 — Clone the Repository
-
-Copy the repository's HTTPS clone URL from GitHub and run:
+Copy the repository's HTTPS clone URL from GitHub:
 
 ```cmd
 git clone <YOUR_REPOSITORY_HTTPS_URL>
 cd <CLONED_PROJECT_FOLDER>
-```
-
-Replace both placeholders with your own values. The folder name is determined by the clone destination, not necessarily `IoT_Predictive_Maintenance`.
-
-### Step 2 — Create and Activate a Virtual Environment
-
-```cmd
 python -m venv venv
 venv\Scripts\activate
-```
-
-### Step 3 — Install Dependencies
-
-```cmd
 python -m pip install -r requirements.txt
-python -m pip check
 ```
 
-Primary requirements: Flask 3.1.3, Paho-MQTT 2.2.0 and NumPy 2.5.4. The final custom Random Forest does not require scikit-learn.
+### 2. Configure the MQTT broker (once per computer)
 
-### Step 4 — Configure and Start Mosquitto
+The Python clients expect a **running Mosquitto broker at `localhost:8883` with TLS**, two broker accounts and appropriate topic permissions:
 
-The MQTT clients require the following broker-side accounts:
-
-| Client role | MQTT username | Environment variable containing password |
+| Role | MQTT username | Password variable |
 |---|---|---|
 | Consumer | `maintenance_consumer` | `MQTT_CONSUMER_PASSWORD` |
-| Both publishers | `maintenance_publisher` | `MQTT_PUBLISHER_PASSWORD` |
+| Publisher / AI4I replay | `maintenance_publisher` | `MQTT_PUBLISHER_PASSWORD` |
 
-
-### Local MQTT TLS Configuration
-
-The MQTT clients connect to `localhost` on port `8883` using TLS.
-
-Before running the application:
-
-1. Install Mosquitto and create the `maintenance_consumer` and `maintenance_publisher` accounts.
-2. Configure a local TLS listener on port `8883`.
-3. Create a TLS certificate with `localhost` as a valid hostname.
-4. Configure broker ACLs so publishers can write and consumers can read the required topics.
-5. Place the trusted broker certificate at:
-
-   `%USERPROFILE%\mqtt_tls\server.crt`
-
-6. Restart Mosquitto after updating its configuration.
-
-The certificate and broker credentials must be configured separately on each computer. They are not distributed through GitHub.
-
-The MQTT client passwords must match the corresponding Mosquitto accounts.
-
-
-**Broker configuration is separate from the Python application.** Before starting the application, configure Mosquitto with both accounts and their passwords using a Mosquitto password file and an appropriate local broker configuration. The values entered into the CMD prompts must match the broker's passwords. Do not commit the password file or passwords. The repository does not bundle broker credentials, TLS certificates or ACL files. These must be configured locally.
-
-Start Mosquitto with the authenticated local configuration you created, for example:
+Create the two accounts in the Mosquitto password file, choose their passwords, configure the broker's TLS listener and ACLs, and place the trusted local broker certificate at `%USERPROFILE%\mqtt_tls\server.crt`. The certificate must be valid for `localhost`. Start the broker using **your own configured Mosquitto configuration file**, or confirm that its Windows service is already running:
 
 ```cmd
 mosquitto -c <PATH_TO_YOUR_MOSQUITTO_CONFIG> -v
 ```
 
-Replace the placeholder with the path to your actual configuration file. `mosquitto -v` by itself does **not** establish that authentication is enabled. Keep the broker window running. Do not expose the broker to the public internet.
+The broker configuration, TLS certificates and passwords are **local setup items** and are not included in GitHub. Simply running an unsecured default Mosquitto broker will not satisfy the clients' TLS and authentication settings. Do not start a second broker if the configured broker service is already running.
 
-### Step 5 — Start the Consumer (CMD Window 2)
+### 3. Start the MQTT consumer — CMD window 1
 
-Open a **new Command Prompt** (Windows + R, type `cmd`, press Enter), change into the same cloned folder and activate its environment:
-
-```cmd
-cd /d <FULL_PATH_TO_CLONED_PROJECT>
-venv\Scripts\activate
-set /p MQTT_CONSUMER_PASSWORD=Enter MQTT consumer password:
-python messaging\consumer.py
-```
-
-Enter the password for `maintenance_consumer`. The password is **visible as you type** in CMD. The environment variable is set only for this CMD session. Keep this window open and check for `Connected to MQTT Broker!` and subscriptions to `factory/sensors` and `factory/ai4i/replay`.
-
-### Step 6 — Start the Simulated Sensor Publisher (CMD Window 3)
-
-Open another CMD window in the **same cloned folder**:
+Open a new CMD window in the cloned project folder:
 
 ```cmd
 cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
-set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password:
-python messaging\publisher.py
+set /p MQTT_CONSUMER_PASSWORD=Enter MQTT consumer password: 
+python -m messaging.consumer
 ```
 
-Enter the password for `maintenance_publisher`. The publisher generates five-sensor readings and occasional simulated faults. The consumer should print saved readings and detected anomalies.
+Enter the password assigned to `maintenance_consumer` in Mosquitto. **Keep this window running.** The consumer subscribes to sensor and replay topics, processes readings and stores alerts in SQLite.
 
-### Step 7 — Start the Dashboard (CMD Window 4)
+### 4. Start the simulated sensor publisher — CMD window 2
 
-Open another CMD window in the **same cloned folder**:
+Open another CMD window in the **same project folder**:
 
 ```cmd
 cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
-set /p DASHBOARD_USERNAME=Enter dashboard username:
-set /p DASHBOARD_PASSWORD=Enter dashboard password:
-python dashboard\app.py
+set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password: 
+python -m messaging.publisher
 ```
 
-Set your chosen local dashboard login username and password; these are **not** the MQTT credentials. Both variables must be present in the **dashboard's own CMD session**. CMD displays values while typing. Do not share or commit credentials.
+Enter the password assigned to `maintenance_publisher` in Mosquitto. **Keep this window running.** It publishes sensor readings and simulated faults.
 
-Open **http://127.0.0.1:5000** and sign in using the dashboard credentials. Check the Overview, Sensors, Alerts and Reading History pages.
+**To see new live readings and alerts, both the consumer and publisher must be running, alongside the MQTT broker.** Opening the dashboard alone only shows previously stored data (if any).
 
-### Troubleshooting
+### 5. Start the dashboard and sign in — CMD window 3
 
-- `MQTT_CONSUMER_PASSWORD is not configured`: set that variable in the **consumer** CMD window before launching it.
-- `MQTT_PUBLISHER_PASSWORD is not configured`: set that variable in **each publisher** CMD window before launching it.
-- `Invalid username or password` on the dashboard: stop the dashboard with Ctrl+C, set `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` in that CMD window, restart and try again.
-- Broker connection/authentication fails: verify Mosquitto is running, the broker accounts exist, and passwords match.
-- Sensor readings appear but AI4I predictions remain at zero: run the AI4I replay (Section 14), confirm the consumer subscribes to `factory/ai4i/replay`, and make sure the **consumer and dashboard are running from the same clone**.
-- A fresh clone has an empty local SQLite database until the consumer processes messages; the developer's historical database is not included.
-
-The application is a local research prototype, not a production deployment.
-
----
-
-## 14. Running Dataset Replay
-
-Keep the authenticated Mosquitto broker and consumer running. Use a **new CMD window in the same clone** and activate its virtual environment.
-
-### AI4I Replay (Populates Prediction Records)
+Open a third CMD window in the **same project folder**:
 
 ```cmd
 cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
-set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password:
-python messaging\ai4i_replay_publisher.py
+set "DASHBOARD_USERNAME=admin"
+set /p DASHBOARD_PASSWORD=Enter dashboard login password: 
+python -m dashboard.app
 ```
 
-The replay publisher uses the `maintenance_publisher` account and publishes AI4I dataset records on `factory/ai4i/replay`. Its default replay in the clean-clone verification published 100 records. The consumer loads `models/ai4i_random_forest.pkl`, processes the records and saves predictions in the local SQLite database. Refresh the **Prediction** dashboard page to view the records. The replay publisher stops when its configured batch finishes.
+Choose a dashboard password at the prompt. The dashboard login credentials are **separate from the MQTT passwords**. Keep this CMD window running, then open:
 
-### SKAB Replay
+**http://127.0.0.1:5000**
+
+Sign in with username **`admin`** and the dashboard password you entered. Visit **Overview**, **Live Sensors**, **Maintenance Alerts** and **Reading History** to observe incoming data.
+
+> **Password note:** `set /p` displays the password while typing. Use these commands only in a trusted local environment and avoid sharing screenshots of credentials. Environment variables set in one CMD window do not automatically carry over to other windows.
+
+### 6. Optional: populate replay prediction records
+
+With Mosquitto and the consumer still running, open another CMD window:
 
 ```cmd
 cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
-set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password:
-python sensors\skab_replay.py
+set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password: 
+python -m messaging.ai4i_replay_publisher
 ```
 
-SKAB replay uses recorded industrial sensor sequences. Confirm the replay script's MQTT authentication configuration before relying on it as an authenticated-broker test; this replay command has not been independently verified in the clean-clone run described below.
+The replay publishes AI4I machine records for processing and storage. Refresh **Replay Prediction Results** in the dashboard to view saved replay predictions. The **Machine Failure Prediction** page also supports entering operating parameters manually.
 
-The AI4I replay and five-sensor monitoring streams have different message structures and processing paths. Multiple publishers can run concurrently when intentionally testing mixed data sources; each needs its own CMD session and the appropriate MQTT credentials.
+### Quick troubleshooting
 
----
+| Problem | Check |
+|---|---|
+| No new live readings | Mosquitto, consumer **and** publisher must all be running. |
+| MQTT authentication error | Enter the password matching the correct Mosquitto account in that CMD window. |
+| MQTT TLS/certificate error | Verify port `8883`, broker TLS configuration and `%USERPROFILE%\mqtt_tls\server.crt`. |
+| Dashboard login fails | Set both `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` **before** starting `python -m dashboard.app`. |
+| Dashboard shows no history | A fresh clone starts without the original developer's local SQLite history; generate readings first. |
+| Replay results do not appear | Run the AI4I replay, keep the consumer active and ensure all processes use the same clone. |
 
-## 15. Automated Testing
-The project includes unit and integration tests. A GitHub Actions workflow (`.github/workflows/tests.yml`) also runs the automated tests on repository updates.
+## Sensor simulation and anomaly detection
 
-### Windows Test Runner
-Run:
+| Sensor | Typical simulated range | Unit |
+|---|---|---|
+| Temperature | 35–45 | °C |
+| Vibration | 1–5 | mm/s |
+| Humidity | 30–70 | % |
+| Pressure | 2–6 | bar |
+| Current | 5–20 | A |
+
+The publisher simulates temperature spikes, rising temperatures, vibration spikes, humidity drift, pressure drops and current surges. The live hybrid detector combines direct thresholds with recent-history comparisons and sustained-trend checks. Alert processing assigns severity levels and sensor-specific maintenance recommendations. The system also retains rolling Z-score detection for applicable evaluation/replay workflows.
+
+MQTT topics:
+
+- `factory/sensors` — simulated sensor readings.
+- `factory/ai4i/replay` — AI4I replay records.
+
+Events include traceability metadata such as asset ID, source, timestamps, event ID, run ID, units and schema version. SQLite stores readings, alerts, predictions and maintenance-related records.
+
+## Dashboard modules
+
+| Module | Purpose |
+|---|---|
+| Overview | Latest sensor values, equipment status and monitoring summary |
+| Live Sensors | Near-real-time charts for all five sensors |
+| Maintenance Alerts | Detected anomalies, severity and recommendations |
+| Reading History | Stored sensor measurements and history controls |
+| Machine Failure Prediction | Manual AI4I operating inputs and failure classification |
+| Replay Prediction Results | Stored AI4I replay predictions |
+| Maintenance Management | Alert acknowledgement, maintenance scheduling and status tracking |
+
+## Model and evaluation results
+
+### AI4I 2020 — machine-failure classification
+
+A custom Python/NumPy Random Forest (25 trees, maximum depth 8) was trained and evaluated using the AI4I 2020 Predictive Maintenance dataset (10,000 records: 6,999 training, 1,500 validation and 1,501 test).
+
+| Held-out test metric | Result |
+|---|---:|
+| Accuracy | **97.80%** |
+| Precision | **70.45%** |
+| Recall | **60.78%** |
+| F1-score | **65.26%** |
+| True positives / false positives | 31 / 13 |
+| False negatives / true negatives | 20 / 1,437 |
+
+The prediction page classifies the entered AI4I operating conditions as normal or failure risk. Its displayed model score reflects the Random Forest's voting score, not a calibrated probability of failure.
+
+### Simulated sensor anomaly detection
+
+The hybrid detector was evaluated on labelled historical simulated-sensor runs and compared with a rolling Z-score baseline.
+
+| Fixed test run (418 readings) | Z-score baseline | Hybrid detector |
+|---|---:|---:|
+| Precision | 45.98% | **87.05%** |
+| Recall | 68.18% | **68.75%** |
+| F1-score | 54.92% | **76.83%** |
+| False positives | 141 | **18** |
+
+The updated detector also passed targeted tests for gradual temperature increases and sustained humidity drift. Fixed run IDs make the comparison reproducible; they do not independently establish a previously untouched holdout set.
+
+Evaluation files:
 
 ```cmd
+python -m detection.evaluate_hybrid
+python detection\evaluate_skab_final.py
+```
 
+Saved reports include `results/hybrid_evaluation.json` and `results/skab_final_evaluation.json`. SKAB and NAB are used for additional anomaly-detection experiments; AI4I is used for failure classification.
+
+## Testing
+
+Run the automated test suite:
+
+```cmd
 run_tests.bat
-
 ```
 
-### Alternative Python Command
+Or:
+
 ```cmd
-
 python -m unittest detection.test_consumer_integration detection.test_ai4i_integration detection.test_detector -q
-
 ```
 
-The test suite covers:
+A clean-clone check on 22 November 2026 reported **28 passing automated tests**, successful authenticated MQTT sensor ingestion, dashboard sign-in and an AI4I replay of 100 records.
 
-- Sensor event validation
+## Technologies
 
-- Anomaly detection
+Python 3.12, Flask, Paho-MQTT, Mosquitto, SQLite, NumPy, HTML, CSS, JavaScript and Git/GitHub. The final AI4I Random Forest implementation does not require scikit-learn at runtime.
 
-- Alert generation
+## Security and datasets
 
-- Duplicate event handling
+The project uses MQTT username/password authentication, local TLS communication on port `8883`, broker ACLs, dashboard login, CSRF protection for maintenance actions and SHA-256 integrity verification for the saved AI4I model. **Never commit passwords, broker private keys or password files.** The supplied configuration is intended for a local demonstration environment.
 
-- Alert cooldown behaviour
+Dataset provenance and redistribution information are recorded in `DATASET_ATTRIBUTION.md` (including AI4I, SKAB and NAB). The local SQLite database, broker credentials and TLS private material are not bundled with the repository.
 
-- Invalid readings
+## Summary
 
-- Empty database handling
-
-- AI4I feature processing
-
-- AI4I prediction storage
-
-- Invalid AI4I messages
-
-The project has previously passed 21 integration tests and 7 detector tests.
-
-These tests do not replace live MQTT broker testing, security testing or industrial validation.
-
----
-## 16. Reproducibility
-
-The repository includes project source code, dependency requirements, the trained AI4I model, AI4I and selected SKAB data, evaluation scripts/results, automated tests and dataset attribution documentation. The local SQLite database and historical monitoring records are not committed.
-
-### Clean-Clone Verification (22 November 2026)
-
-A separate clean clone on Windows 10 ARM64 / Python 3.12.10 was tested with:
-
-- Fresh virtual environment and successful installation from `requirements.txt`
-- `python -m pip check` with no broken requirements
-- `run_tests.bat` passing **28 automated tests**
-- Authenticated MQTT consumer receiving simulated sensor data and saving anomaly alerts
-- Dashboard login working with environment-provided credentials
-- AI4I replay publishing **100 records**, followed by successful prediction display after the consumer and dashboard were launched from the **same clone**
-
-**Important reproducibility lesson:** Running the consumer from the original working folder and the dashboard from the clean clone produced empty prediction counts in the clone. Run all application processes from the same cloned folder to use the same SQLite database.
-
-This verifies the tested local workflow, not production deployment, every dataset replay option, or industrial accuracy.
-
----
-
-## 17. Security Considerations
-
-Implemented controls include:
-
-- MQTT message validation and duplicate event handling
-- MQTT client credentials supplied through environment variables (`MQTT_CONSUMER_PASSWORD`, `MQTT_PUBLISHER_PASSWORD`)
-- Dashboard login using `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD`
-- CSRF protection for maintenance actions
-- Local SQLite storage
-
-The consumer uses MQTT username `maintenance_consumer`; the publishers use `maintenance_publisher`. Mosquitto must be configured separately to validate those accounts. The login is basic local authentication; it is **not** role-based access control or a production identity system.
-
-
-### Security Limitations
-
-The following security controls have been implemented and locally tested:
-
-- MQTT username/password authentication
-- TLS-encrypted MQTT communication on port 8883
-- Broker access-control lists (ACLs)
-- SHA-256 integrity verification before loading the AI4I model
-- Dashboard login authentication
-- CSRF protection for maintenance actions
-
-Remaining limitations:
-
-- The unencrypted MQTT port 1883 remains enabled locally.
-- TLS uses a locally generated self-signed certificate.
-- Dashboard authentication does not support multiple user roles.
-- No production security audit has been performed.
-
-The project is intended for local academic demonstration, not production deployment.
-
-
-Never commit passwords, Mosquitto password files or secret environment settings. Use the system only in a trusted development environment until these limitations are addressed.
-
----
-
-## 18. Current Limitations
-The main limitations are:
-
-1. Sensor data is simulated or replayed from benchmark datasets.
-
-2. No real industrial pilot has been completed.
-
-3. Anomaly thresholds require further calibration.
-
-4. SKAB testing shows high false-positive rates.
-
-5. The AI4I model misses some actual failures.
-
-6. The AI4I model and five-sensor monitoring system are separate.
-
-7. The system predicts failure classification, not time-to-failure.
-
-8. MQTT security is configured for local testing; production security hardening has not been completed.
-
-9. Dashboard authentication is implemented for local use, but role-based access control is not.
-
-10. Large-scale database retention and deployment behaviour have not been validated.
-
-11. Performance has not been verified across different operating systems and industrial environments.
-
----
-## 19. Future Improvements
-Potential future work includes:
-
-- Stronger dashboard authentication and user roles
-
-- Industrial threshold calibration
-
-- Reduced false-alarm rates
-
-- MQTT reconnect and recovery testing
-
-- Database retention and archival policies
-
-- Real industrial sensor integration
-
-- Unified live machine-failure prediction
-
-- Time-to-failure estimation
-
-- Per-machine validation
-
-- Production deployment automation and release hardening
-
-- Cloud-based monitoring
-
-- Authorised industrial pilot testing
-
-These are future improvements, not completed project features.
-
----
-## 20. Conclusion
-This project demonstrates an IoT-based predictive maintenance prototype combining simulated sensor monitoring, MQTT communication, anomaly detection, maintenance management and machine-learning-based failure classification.
-
-It provides a working foundation for monitoring equipment behaviour and investigating abnormal operating conditions.
-
-The AI4I model demonstrates machine-failure classification capability, while the SKAB evaluation identifies important limitations in statistical anomaly detection.
-
-Further security hardening, threshold calibration, model validation and industrial testing are required before production deployment.
+This project demonstrates a working IoT predictive-maintenance workflow: sensor simulation, authenticated streaming, anomaly detection, alert management, live visualisation, and machine-failure classification, supported by reproducible tests and evaluation results.
