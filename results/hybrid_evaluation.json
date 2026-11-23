@@ -1,7 +1,7 @@
 {
     "evaluation_type": "simulated_sensor_anomaly_detection",
     "split_method": "fixed_run_ids",
-    "notes": "Run IDs are fixed to prevent automatic reassignment. This does not independently establish that the test run was excluded from earlier detector tuning.",
+    "notes": "Run IDs are fixed to prevent automatic reassignment. This does not independently establish that the test run was excluded from earlier detector tuning. The hybrid evaluation imports the current production detector, including gradual temperature-rise and sustained humidity-drift rules.",
     "runs": [
         {
             "role": "DEVELOPMENT",

@@ -4,6 +4,8 @@ import sqlite3
 import statistics
 from pathlib import Path
 
+from detection.hybrid_detector import detect_hybrid
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 DB = BASE_DIR / "data" / "sensor_readings.db"
 RESULT_FILE = BASE_DIR / "results" / "hybrid_evaluation.json"
@@ -46,26 +48,7 @@ def baseline(history, values):
 
 
 def hybrid(history, values):
-    temp = values["temperature"]
-    vibration = values["vibration"]
-    humidity = values["humidity"]
-
-    if temp > 50 or vibration > 8:
-        return True
-
-    recent_temp = history["temperature"][-5:]
-
-    if len(recent_temp) == 5:
-        if temp > statistics.mean(recent_temp) + 7:
-            return True
-
-    recent_humidity = history["humidity"][-10:]
-
-    if len(recent_humidity) >= 5:
-        if humidity > statistics.mean(recent_humidity) + 15:
-            return True
-
-    return False
+    return bool(detect_hybrid(history, values))
 
 
 def evaluate(rows, detector):
@@ -112,7 +95,10 @@ def main():
         "notes": (
             "Run IDs are fixed to prevent automatic reassignment. "
             "This does not independently establish that the test run "
-            "was excluded from earlier detector tuning."
+            "was excluded from earlier detector tuning. "
+            "The hybrid evaluation imports the current production "
+            "detector, including gradual temperature-rise and "
+            "sustained humidity-drift rules."
         ),
         "runs": [],
     }
