@@ -1,0 +1,51 @@
+services:
+  mqtt:
+    image: eclipse-mosquitto:2
+    ports:
+      - "127.0.0.1:8883:8883"
+    volumes:
+      - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
+      - ${USERPROFILE}/docker_mqtt_security:/mosquitto/security:ro
+    restart: unless-stopped
+
+  dashboard:
+    build: .
+    command: python -m dashboard.app
+    environment:
+      DOCKER_ENV: "1"
+      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:?Username required}
+      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Password required}
+    ports:
+      - "127.0.0.1:5000:5000"
+    volumes:
+      - ./data:/app/data
+    depends_on:
+      - mqtt
+    restart: unless-stopped
+
+  consumer:
+    build: .
+    command: python -m messaging.consumer
+    environment:
+      MQTT_HOST: mqtt
+      MQTT_PORT: "8883"
+      MQTT_CONSUMER_PASSWORD: ${MQTT_CONSUMER_PASSWORD:?Consumer password required}
+    volumes:
+      - ./data:/app/data
+      - ${USERPROFILE}/docker_mqtt_security/server.crt:/root/mqtt_tls/server.crt:ro
+    depends_on:
+      - mqtt
+    restart: unless-stopped
+  publisher:
+    build: .
+    command: python -u -m messaging.publisher
+    environment:
+      MQTT_HOST: mqtt
+      MQTT_PUBLISHER_PASSWORD: ${MQTT_PUBLISHER_PASSWORD:?Publisher password required}
+    volumes:
+      - ./data:/app/data
+      - ${USERPROFILE}/docker_mqtt_security/server.crt:/root/mqtt_tls/server.crt:ro
+    depends_on:
+      - mqtt
+      - consumer
+    restart: unless-stopped

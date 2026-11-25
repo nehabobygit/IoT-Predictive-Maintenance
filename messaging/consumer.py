@@ -1,17 +1,24 @@
+
 import json
 import math
+import os
+import queue
+import threading
+import urllib.error
+import urllib.request
 import pickle
 import sqlite3
 import sys
 import time
 from pathlib import Path
-from messaging.model_security import verify_ai4i_model
 
 import paho.mqtt.client as mqtt
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
+
+from messaging.model_security import verify_ai4i_model
 
 try:
     from .message_contract import (
@@ -30,15 +37,21 @@ except ImportError:
 
 from detection.train_ai4i_rf import predict_forest
 from detection.detection_engine import (
-    calculate_z_score, classify_severity, WINDOW, Z_THRESHOLD, ALERT_COOLDOWN
+    calculate_z_score,
+    classify_severity,
+    WINDOW,
+    Z_THRESHOLD,
+    ALERT_COOLDOWN,
 )
+from detection.hybrid_detector import detect_hybrid
 
 try:
     from .mqtt_security import configure_mqtt_auth
 except ImportError:
     from mqtt_security import configure_mqtt_auth
 
-BROKER = "localhost"
+
+BROKER = os.getenv("MQTT_HOST", "localhost")
 PORT = 8883
 TOPIC = "factory/sensors"
 AI4I_TOPIC = "factory/ai4i/replay"
@@ -46,10 +59,74 @@ AI4I_TOPIC = "factory/ai4i/replay"
 DB_PATH = BASE_DIR / "data" / "sensor_readings.db"
 MODEL_PATH = BASE_DIR / "models" / "ai4i_random_forest.pkl"
 
-SENSORS = ["temperature", "vibration", "humidity", "pressure", "current"]
+SENSORS = [
+    "temperature",
+    "vibration",
+    "humidity",
+    "pressure",
+    "current",
+]
 
 last_alert_time = {}
 ai4i_model = None
+
+# Optional external HIGH-severity alerts. No webhook means no network calls.
+WEBHOOK_URL = os.environ.get("MAINTENANCE_WEBHOOK_URL", "").strip()
+WEBHOOK_TOKEN = os.environ.get("MAINTENANCE_WEBHOOK_TOKEN", "").strip()
+notification_queue = queue.Queue(maxsize=200)
+
+
+def notification_worker():
+    """Send notifications outside the MQTT callback to avoid blocking ingestion."""
+    while True:
+        payload = notification_queue.get()
+        try:
+            body = json.dumps({
+                "content": (
+                    f"🚨 HIGH-SEVERITY MAINTENANCE ALERT\n"
+                    f"Machine: {payload['asset_id']}\n"
+                    f"Sensor: {payload['sensor'].upper()}\n"
+                    f"Reading: {payload['reading']} {payload['unit']}\n"
+                    f"Severity: {payload['severity']}\n"
+                    f"Recommendation: {payload['recommendation']}"
+                    )
+}).encode("utf-8")
+            headers = {"Content-Type": "application/json"}
+            if WEBHOOK_TOKEN:
+                headers["Authorization"] = f"Bearer {WEBHOOK_TOKEN}"
+            request = urllib.request.Request(
+                WEBHOOK_URL, data=body, headers=headers, method="POST"
+            )
+            with urllib.request.urlopen(request, timeout=5) as response:
+                if not 200 <= response.status < 300:
+                    raise RuntimeError(f"Webhook returned HTTP {response.status}")
+            print("Webhook notification delivered:", payload["event_id"])
+        except Exception as error:
+            print("Webhook notification failed:", error)
+        finally:
+            notification_queue.task_done()
+
+
+def notify_committed_high_alerts(event_id):
+    """Queue only committed HIGH alerts for this event; never block MQTT."""
+    if not WEBHOOK_URL:
+        return
+    with sqlite3.connect(DB_PATH) as conn:
+        rows = conn.execute("""
+            SELECT timestamp, asset_id, sensor, reading, unit,
+                   severity, recommendation, event_id, run_id, source
+            FROM alerts WHERE event_id = ? AND severity = 'HIGH'
+        """, (event_id,)).fetchall()
+    fields = (
+        "timestamp", "asset_id", "sensor", "reading", "unit",
+        "severity", "recommendation", "event_id", "run_id", "source"
+    )
+    for row in rows:
+        try:
+            notification_queue.put_nowait(dict(zip(fields, row)))
+        except queue.Full:
+            print("Webhook queue full; alert remains saved in SQLite:", event_id)
+
 
 AI4I_FEATURES = [
     "air_temperature",
@@ -74,14 +151,19 @@ RECOMMENDATIONS = {
 
 
 def ensure_columns(conn, table_name, column_definitions):
-    """Add missing metadata columns without recreating or deleting existing data."""
+    """Add missing metadata columns without deleting existing data."""
     existing = {
-        row[1] for row in conn.execute(f"PRAGMA table_info({table_name})").fetchall()
+        row[1]
+        for row in conn.execute(
+            f"PRAGMA table_info({table_name})"
+        ).fetchall()
     }
+
     for column_name, definition in column_definitions.items():
         if column_name not in existing:
             conn.execute(
-                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {definition}"
+                f"ALTER TABLE {table_name} "
+                f"ADD COLUMN {column_name} {definition}"
             )
 
 
@@ -158,7 +240,6 @@ def create_database():
             )
         """)
 
-        # Safe additive migration support for older copies of the database.
         ensure_columns(conn, "sensor_readings", {
             "asset_id": "TEXT DEFAULT 'LEGACY-UNKNOWN'",
             "source": "TEXT DEFAULT 'legacy_unknown'",
@@ -171,6 +252,7 @@ def create_database():
             "source_channels_json": "TEXT DEFAULT '{}'",
             "actual_anomaly": "INTEGER",
         })
+
         ensure_columns(conn, "alerts", {
             "asset_id": "TEXT DEFAULT 'LEGACY-UNKNOWN'",
             "source": "TEXT DEFAULT 'legacy_unknown'",
@@ -179,6 +261,7 @@ def create_database():
             "run_id": "TEXT",
             "unit": "TEXT",
         })
+
         ensure_columns(conn, "predictions", {
             "run_id": "TEXT",
             "asset_id": "TEXT",
@@ -191,21 +274,29 @@ def create_database():
             "source_channels_json": "TEXT DEFAULT '{}'",
         })
 
-        # QoS 1 can redeliver a message. Unique event IDs prevent duplicate rows.
         conn.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_sensor_readings_event_id_unique
-            ON sensor_readings(event_id) WHERE event_id IS NOT NULL
+            CREATE UNIQUE INDEX IF NOT EXISTS
+            idx_sensor_readings_event_id_unique
+            ON sensor_readings(event_id)
+            WHERE event_id IS NOT NULL
         """)
+
         conn.execute("""
-            CREATE UNIQUE INDEX IF NOT EXISTS idx_predictions_event_id_unique
-            ON predictions(event_id) WHERE event_id IS NOT NULL
+            CREATE UNIQUE INDEX IF NOT EXISTS
+            idx_predictions_event_id_unique
+            ON predictions(event_id)
+            WHERE event_id IS NOT NULL
         """)
+
         conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_sensor_readings_asset_source_run
+            CREATE INDEX IF NOT EXISTS
+            idx_sensor_readings_asset_source_run
             ON sensor_readings(asset_id, source, run_id, id)
         """)
+
         conn.execute("""
-            CREATE INDEX IF NOT EXISTS idx_predictions_run_id_id
+            CREATE INDEX IF NOT EXISTS
+            idx_predictions_run_id_id
             ON predictions(run_id, id)
         """)
 
@@ -215,8 +306,11 @@ def load_ai4i_model():
 
     if ai4i_model is not None:
         return ai4i_model
+
     if not MODEL_PATH.exists():
-        raise FileNotFoundError(f"AI4I model not found: {MODEL_PATH}")
+        raise FileNotFoundError(
+            f"AI4I model not found: {MODEL_PATH}"
+        )
 
     verify_ai4i_model(MODEL_PATH)
 
@@ -224,48 +318,249 @@ def load_ai4i_model():
         model = pickle.load(file)
 
     if model.get("features") != AI4I_FEATURES:
-        raise ValueError("AI4I model feature order does not match the expected features.")
+        raise ValueError(
+            "AI4I model feature order does not match "
+            "the expected features."
+        )
+
     if not model.get("trees"):
-        raise ValueError("AI4I model contains no trees.")
+        raise ValueError(
+            "AI4I model contains no trees."
+        )
 
     ai4i_model = model
+
     print("\nAI4I Random Forest model loaded.")
     print("Number of trees:", len(ai4i_model["trees"]))
-    print("Decision threshold:", round(float(ai4i_model["threshold"]), 2))
+    print(
+        "Decision threshold:",
+        round(float(ai4i_model["threshold"]), 2),
+    )
+
     return ai4i_model
 
 
-def check_anomalies(conn, timestamp, readings, current_id, metadata, units_json):
-    """Compare only with prior readings from this same asset, source and run."""
+def get_sensor_history(
+    cursor,
+    sensor,
+    current_id,
+    metadata,
+    units_json,
+):
+    """
+    Retrieve previous readings belonging to the same
+    asset, source, run, units and source channels.
+    """
+    cursor.execute(f"""
+        SELECT {sensor}
+        FROM sensor_readings
+        WHERE id < ?
+          AND asset_id = ?
+          AND source = ?
+          AND run_id = ?
+          AND units_json = ?
+          AND source_channels_json = ?
+        ORDER BY id DESC
+        LIMIT ?
+    """, (
+        current_id,
+        metadata["asset_id"],
+        metadata["source"],
+        metadata["run_id"],
+        units_json,
+        json.dumps(
+            metadata["source_channels"],
+            sort_keys=True,
+            separators=(",", ":"),
+        ),
+        WINDOW,
+    ))
+
+    return [
+        row[0]
+        for row in reversed(cursor.fetchall())
+        if row[0] is not None
+    ]
+
+
+def save_alert(
+    cursor,
+    timestamp,
+    sensor,
+    reading,
+    z_score,
+    severity,
+    metadata,
+):
+    """
+    Preserve existing alert storage and cooldown behaviour.
+    """
+    alert_key = (
+        metadata["asset_id"],
+        metadata["source"],
+        metadata["run_id"],
+        metadata["source_channels"].get("sequence_id"),
+        sensor,
+        severity,
+    )
+
+    current_time = time.monotonic()
+    previous_alert = last_alert_time.get(alert_key)
+
+    if (
+        previous_alert is not None
+        and current_time - previous_alert < ALERT_COOLDOWN
+    ):
+        return False
+
+    cursor.execute("""
+        INSERT INTO alerts (
+            timestamp,
+            sensor,
+            reading,
+            z_score,
+            severity,
+            recommendation,
+            asset_id,
+            source,
+            schema_version,
+            event_id,
+            run_id,
+            unit
+        )
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (
+        timestamp,
+        sensor,
+        reading,
+        round(z_score, 2),
+        severity,
+        RECOMMENDATIONS[sensor],
+        metadata["asset_id"],
+        metadata["source"],
+        metadata["schema_version"],
+        metadata["event_id"],
+        metadata["run_id"],
+        metadata["units"][sensor],
+    ))
+
+    last_alert_time[alert_key] = current_time
+
+    return True
+
+
+def check_anomalies(
+    conn,
+    timestamp,
+    readings,
+    current_id,
+    metadata,
+    units_json,
+):
+    """
+    Use hybrid detection for simulated sensors.
+
+    Preserve the original Z-score detector
+    for SKAB and other supported sources.
+    """
     cursor = conn.cursor()
 
-    for sensor in SENSORS:
-        if metadata["source"] == "skab_replay" and sensor in metadata["synthetic_fields"]:
-            continue
-        cursor.execute(f"""
-            SELECT {sensor}
-            FROM sensor_readings
-            WHERE id < ?
-              AND asset_id = ?
-              AND source = ?
-              AND run_id = ?
-              AND units_json = ?
-              AND source_channels_json = ?
-            ORDER BY id DESC
-            LIMIT ?
-        """, (
-            current_id,
-            metadata["asset_id"],
-            metadata["source"],
-            metadata["run_id"],
-            units_json,
-            json.dumps(metadata["source_channels"], sort_keys=True, separators=(",", ":")),
-            WINDOW,
-        ))
+    # -------------------------------------------
+    # HYBRID DETECTOR: SIMULATED SENSOR DATA
+    # -------------------------------------------
+    if metadata["source"] == "simulated_sensor":
+        history = {}
 
-        previous = [row[0] for row in cursor.fetchall() if row[0] is not None]
-        reading = readings[sensor]
-        z_score = calculate_z_score(previous, reading)
+        for sensor in SENSORS:
+            history[sensor] = get_sensor_history(
+                cursor,
+                sensor,
+                current_id,
+                metadata,
+                units_json,
+            )
+
+        anomalies = detect_hybrid(history, readings)
+
+        for sensor, score in anomalies.items():
+            z_score = calculate_z_score(
+                history[sensor],
+                readings[sensor],
+            )
+
+            # Simulated-source severity combines absolute fault limits
+            # with the original Z-score severity when history is available.
+            # These thresholds are for the simulator, not industrial limits.
+            severity_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
+            severity = "LOW"
+
+            if sensor == "temperature":
+                if readings[sensor] >= 60:
+                    severity = "HIGH"
+                elif readings[sensor] > 50:
+                    severity = "MEDIUM"
+            elif sensor == "vibration":
+                if readings[sensor] >= 14:
+                    severity = "HIGH"
+                elif readings[sensor] > 8:
+                    severity = "MEDIUM"
+            elif sensor == "humidity" and score >= 10:
+                severity = "MEDIUM"
+
+            if z_score is not None:
+                z_severity = classify_severity(z_score)
+                if severity_rank[z_severity] > severity_rank[severity]:
+                    severity = z_severity
+                stored_score = z_score
+            else:
+                stored_score = 0.0
+
+            saved = save_alert(
+                cursor,
+                timestamp,
+                sensor,
+                readings[sensor],
+                stored_score,
+                severity,
+                metadata,
+            )
+
+            if saved:
+                print("\nHYBRID ANOMALY DETECTED!")
+                print("Asset:", metadata["asset_id"])
+                print("Source:", metadata["source"])
+                print("Sensor:", sensor.upper())
+                print("Reading:", readings[sensor])
+                print("Hybrid score:", round(score, 2))
+                print("Severity:", severity)
+                print("Recommendation:", RECOMMENDATIONS[sensor])
+                print("-" * 50)
+
+        return
+
+    # -------------------------------------------
+    # ORIGINAL Z-SCORE DETECTOR: OTHER SOURCES
+    # -------------------------------------------
+    for sensor in SENSORS:
+        if (
+            metadata["source"] == "skab_replay"
+            and sensor in metadata["synthetic_fields"]
+        ):
+            continue
+
+        history = get_sensor_history(
+            cursor,
+            sensor,
+            current_id,
+            metadata,
+            units_json,
+        )
+
+        z_score = calculate_z_score(
+            history,
+            readings[sensor],
+        )
+
         if z_score is None:
             continue
 
@@ -273,89 +568,130 @@ def check_anomalies(conn, timestamp, readings, current_id, metadata, units_json)
             continue
 
         severity = classify_severity(z_score)
-        alert_key = (
-            metadata["asset_id"], metadata["source"], metadata["run_id"],
-            metadata["source_channels"].get("sequence_id"), sensor, severity
-        )
-        current_time = time.monotonic()
-        previous_alert = last_alert_time.get(alert_key)
-        if previous_alert is not None and current_time - previous_alert < ALERT_COOLDOWN:
-            continue
 
-        recommendation = RECOMMENDATIONS[sensor]
-        cursor.execute("""
-            INSERT INTO alerts (
-                timestamp, sensor, reading, z_score, severity, recommendation,
-                asset_id, source, schema_version, event_id, run_id, unit
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        """, (
+        saved = save_alert(
+            cursor,
             timestamp,
             sensor,
-            reading,
-            round(z_score, 2),
+            readings[sensor],
+            z_score,
             severity,
-            recommendation,
-            metadata["asset_id"],
-            metadata["source"],
-            metadata["schema_version"],
-            metadata["event_id"],
-            metadata["run_id"],
-            metadata["units"][sensor],
-        ))
-        last_alert_time[alert_key] = current_time
+            metadata,
+        )
 
-        print("\nANOMALY DETECTED!")
-        print("Asset:", metadata["asset_id"])
-        print("Source:", metadata["source"])
-        print("Sensor:", sensor.upper(), "(", metadata["units"][sensor], ")")
-        print("Reading:", reading)
-        print("Z-score:", round(z_score, 2))
-        print("Severity:", severity)
-        print("Recommendation:", recommendation)
-        print("-" * 50)
+        if saved:
+            print("\nANOMALY DETECTED!")
+            print("Asset:", metadata["asset_id"])
+            print("Source:", metadata["source"])
+            print("Sensor:", sensor.upper())
+            print(
+                "Reading:",
+                readings[sensor],
+                metadata["units"][sensor],
+            )
+            print("Z-score:", round(z_score, 2))
+            print("Severity:", severity)
+            print("Recommendation:", RECOMMENDATIONS[sensor])
+            print("-" * 50)
 
 
 def process_sensor_message(data):
     source = validate_metadata(data)
+
     if source not in SENSOR_UNITS:
-        raise ValueError(f"Source '{source}' is not valid for the five-sensor MQTT topic.")
+        raise ValueError(
+            f"Source '{source}' is not valid "
+            "for the five-sensor MQTT topic."
+        )
 
     readings = data.get("readings")
-    if not isinstance(readings, dict) or set(readings) != set(SENSORS):
-        raise ValueError("Sensor readings must contain exactly the five configured sensor fields.")
+
+    if (
+        not isinstance(readings, dict)
+        or set(readings) != set(SENSORS)
+    ):
+        raise ValueError(
+            "Sensor readings must contain exactly "
+            "the five configured sensor fields."
+        )
 
     numeric_readings = {}
+
     for sensor in SENSORS:
         try:
             value = float(readings[sensor])
         except (TypeError, ValueError) as error:
-            raise ValueError(f"Invalid numeric value for {sensor}.") from error
+            raise ValueError(
+                f"Invalid numeric value for {sensor}."
+            ) from error
+
         if not math.isfinite(value):
-            raise ValueError(f"Non-finite {sensor} reading.")
+            raise ValueError(
+                f"Non-finite {sensor} reading."
+            )
+
         numeric_readings[sensor] = value
 
     actual_anomaly = data.get("actual_anomaly")
-    if type(actual_anomaly) is not int or actual_anomaly not in (0, 1):
-        raise ValueError("actual_anomaly must be integer 0 or 1.")
+
+    if (
+        type(actual_anomaly) is not int
+        or actual_anomaly not in (0, 1)
+    ):
+        raise ValueError(
+            "actual_anomaly must be integer 0 or 1."
+        )
 
     faults = data.get("faults", [])
-    if not isinstance(faults, list) or not all(isinstance(item, str) for item in faults):
-        raise ValueError("faults must be a list of strings.")
+
+    if (
+        not isinstance(faults, list)
+        or not all(isinstance(item, str) for item in faults)
+    ):
+        raise ValueError(
+            "faults must be a list of strings."
+        )
 
     metadata = data
-    units_json = json.dumps(data["units"], sort_keys=True, separators=(",", ":"))
-    synthetic_fields_json = json.dumps(data["synthetic_fields"], separators=(",", ":"))
-    source_channels_json = json.dumps(data["source_channels"], sort_keys=True, separators=(",", ":"))
+
+    units_json = json.dumps(
+        data["units"],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    synthetic_fields_json = json.dumps(
+        data["synthetic_fields"],
+        separators=(",", ":"),
+    )
+
+    source_channels_json = json.dumps(
+        data["source_channels"],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
+
         cursor.execute("""
             INSERT OR IGNORE INTO sensor_readings (
-                timestamp, temperature, vibration, humidity, pressure, current,
-                asset_id, source, schema_version, event_id, run_id,
-                source_timestamp, units_json, synthetic_fields_json,
-                source_channels_json, actual_anomaly
+                timestamp,
+                temperature,
+                vibration,
+                humidity,
+                pressure,
+                current,
+                asset_id,
+                source,
+                schema_version,
+                event_id,
+                run_id,
+                source_timestamp,
+                units_json,
+                synthetic_fields_json,
+                source_channels_json,
+                actual_anomaly
             )
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """, (
@@ -378,10 +714,14 @@ def process_sensor_message(data):
         ))
 
         if cursor.rowcount == 0:
-            print("Duplicate sensor event ignored:", data["event_id"])
+            print(
+                "Duplicate sensor event ignored:",
+                data["event_id"],
+            )
             return
 
         current_id = cursor.lastrowid
+
         check_anomalies(
             conn,
             data["timestamp"],
@@ -391,33 +731,60 @@ def process_sensor_message(data):
             units_json,
         )
 
+    # The database transaction has committed at this point.
+    notify_committed_high_alerts(data["event_id"])
+
     print(
-        "Sensor data saved:", data["timestamp"],
-        "| Asset:", data["asset_id"],
-        "| Source:", source,
-        "| Run:", data["run_id"],
+        "Sensor data saved:",
+        data["timestamp"],
+        "| Asset:",
+        data["asset_id"],
+        "| Source:",
+        source,
+        "| Run:",
+        data["run_id"],
     )
 
 
 def process_ai4i_message(data):
-    source = validate_metadata(data, expected_source="ai4i_replay")
+    source = validate_metadata(
+        data,
+        expected_source="ai4i_replay",
+    )
+
     if source != "ai4i_replay":
-        raise ValueError("Invalid source for AI4I replay topic.")
+        raise ValueError(
+            "Invalid source for AI4I replay topic."
+        )
 
     model = load_ai4i_model()
     readings = data.get("readings")
     expected_fields = set(AI4I_UNITS)
-    if not isinstance(readings, dict) or set(readings) != expected_fields:
-        raise ValueError("AI4I readings must contain exactly the five required numeric fields.")
+
+    if (
+        not isinstance(readings, dict)
+        or set(readings) != expected_fields
+    ):
+        raise ValueError(
+            "AI4I readings must contain exactly "
+            "the five required numeric fields."
+        )
 
     numeric = {}
+
     for field in AI4I_UNITS:
         try:
             value = float(readings[field])
         except (TypeError, ValueError) as error:
-            raise ValueError(f"Invalid numeric AI4I field: {field}") from error
+            raise ValueError(
+                f"Invalid numeric AI4I field: {field}"
+            ) from error
+
         if not math.isfinite(value):
-            raise ValueError(f"Non-finite AI4I field: {field}")
+            raise ValueError(
+                f"Non-finite AI4I field: {field}"
+            )
+
         numeric[field] = value
 
     udi = data.get("udi")
@@ -426,13 +793,30 @@ def process_ai4i_message(data):
     product_id = data.get("product_id")
 
     if type(udi) is not int or udi <= 0:
-        raise ValueError("AI4I UDI must be a positive integer.")
-    if type(actual_failure) is not int or actual_failure not in (0, 1):
-        raise ValueError("Actual failure label must be integer 0 or 1.")
+        raise ValueError(
+            "AI4I UDI must be a positive integer."
+        )
+
+    if (
+        type(actual_failure) is not int
+        or actual_failure not in (0, 1)
+    ):
+        raise ValueError(
+            "Actual failure label must be integer 0 or 1."
+        )
+
     if machine_type not in ("L", "M", "H"):
-        raise ValueError("Invalid AI4I machine type.")
-    if not isinstance(product_id, str) or not product_id.strip():
-        raise ValueError("AI4I product_id is missing.")
+        raise ValueError(
+            "Invalid AI4I machine type."
+        )
+
+    if (
+        not isinstance(product_id, str)
+        or not product_id.strip()
+    ):
+        raise ValueError(
+            "AI4I product_id is missing."
+        )
 
     air = numeric["air_temperature"]
     process = numeric["process_temperature"]
@@ -453,27 +837,76 @@ def process_ai4i_message(data):
         torque * speed / 1000,
     ]
 
-    failure_score = float(predict_forest(model["trees"], [features])[0])
-    threshold = round(float(model["threshold"]), 2)
-    predicted_failure = 1 if failure_score >= threshold else 0
-    correct = int(predicted_failure == actual_failure)
+    failure_score = float(
+        predict_forest(
+            model["trees"],
+            [features],
+        )[0]
+    )
 
-    units_json = json.dumps(data["units"], sort_keys=True, separators=(",", ":"))
-    synthetic_fields_json = json.dumps(data["synthetic_fields"], separators=(",", ":"))
-    source_channels_json = json.dumps(data["source_channels"], sort_keys=True, separators=(",", ":"))
+    threshold = round(
+        float(model["threshold"]),
+        2,
+    )
+
+    predicted_failure = (
+        1 if failure_score >= threshold else 0
+    )
+
+    correct = int(
+        predicted_failure == actual_failure
+    )
+
+    units_json = json.dumps(
+        data["units"],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
+
+    synthetic_fields_json = json.dumps(
+        data["synthetic_fields"],
+        separators=(",", ":"),
+    )
+
+    source_channels_json = json.dumps(
+        data["source_channels"],
+        sort_keys=True,
+        separators=(",", ":"),
+    )
 
     with sqlite3.connect(DB_PATH) as conn:
         cursor = conn.cursor()
+
         cursor.execute("""
             INSERT OR IGNORE INTO predictions (
-                timestamp, udi, product_id, machine_type,
-                air_temperature, process_temperature, rotational_speed,
-                torque, tool_wear, failure_score, threshold,
-                predicted_failure, actual_failure, correct,
-                run_id, asset_id, source, schema_version, source_timestamp,
-                event_id, units_json, synthetic_fields_json, source_channels_json
+                timestamp,
+                udi,
+                product_id,
+                machine_type,
+                air_temperature,
+                process_temperature,
+                rotational_speed,
+                torque,
+                tool_wear,
+                failure_score,
+                threshold,
+                predicted_failure,
+                actual_failure,
+                correct,
+                run_id,
+                asset_id,
+                source,
+                schema_version,
+                source_timestamp,
+                event_id,
+                units_json,
+                synthetic_fields_json,
+                source_channels_json
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            VALUES (
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?,
+                ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+            )
         """, (
             data["timestamp"],
             udi,
@@ -501,7 +934,10 @@ def process_ai4i_message(data):
         ))
 
         if cursor.rowcount == 0:
-            print("Duplicate AI4I event ignored:", data["event_id"])
+            print(
+                "Duplicate AI4I event ignored:",
+                data["event_id"],
+            )
             return
 
     print("\nAI4I MACHINE PREDICTION")
@@ -510,67 +946,155 @@ def process_ai4i_message(data):
     print("UDI:", udi)
     print("Product ID:", product_id)
     print("Machine type:", machine_type)
-    print("Failure score:", round(failure_score * 100, 2), "%")
-    print("Decision threshold:", round(threshold * 100, 2), "%")
-    print("Predicted:", "FAILURE" if predicted_failure else "NORMAL")
-    print("Actual:", "FAILURE" if actual_failure else "NORMAL")
-    print("Prediction:", "CORRECT" if correct else "INCORRECT")
+    print(
+        "Failure score:",
+        round(failure_score * 100, 2),
+        "%",
+    )
+    print(
+        "Decision threshold:",
+        round(threshold * 100, 2),
+        "%",
+    )
+    print(
+        "Predicted:",
+        "FAILURE" if predicted_failure else "NORMAL",
+    )
+    print(
+        "Actual:",
+        "FAILURE" if actual_failure else "NORMAL",
+    )
+    print(
+        "Prediction:",
+        "CORRECT" if correct else "INCORRECT",
+    )
     print("-" * 50)
 
 
-def on_connect(client, userdata, flags, reason_code, properties):
+def on_connect(
+    client,
+    userdata,
+    flags,
+    reason_code,
+    properties,
+):
     if reason_code == 0:
         print("Connected to MQTT Broker!")
-        client.subscribe([(TOPIC, 1), (AI4I_TOPIC, 1)])
+
+        client.subscribe([
+            (TOPIC, 1),
+            (AI4I_TOPIC, 1),
+        ])
+
         print("Subscribed to topics:")
         print("-", TOPIC)
         print("-", AI4I_TOPIC, "\n")
     else:
-        print("Connection failed:", reason_code)
+        print(
+            "Connection failed:",
+            reason_code,
+        )
 
 
 def on_message(client, userdata, msg):
     try:
-        data = json.loads(msg.payload.decode("utf-8"))
+        data = json.loads(
+            msg.payload.decode("utf-8")
+        )
+
         if msg.topic == TOPIC:
             process_sensor_message(data)
+
         elif msg.topic == AI4I_TOPIC:
             process_ai4i_message(data)
-        else:
-            print("Unknown MQTT topic:", msg.topic)
-    except (UnicodeDecodeError, json.JSONDecodeError, ValueError, KeyError, TypeError) as error:
-        print(f"Rejected invalid message from {msg.topic}: {error}")
-    except Exception as error:
-        print(f"Unexpected error processing message from {msg.topic}: {error}")
 
+        else:
+            print(
+                "Unknown MQTT topic:",
+                msg.topic,
+            )
+
+    except (
+        UnicodeDecodeError,
+        json.JSONDecodeError,
+        ValueError,
+        KeyError,
+        TypeError,
+    ) as error:
+        print(
+            f"Rejected invalid message "
+            f"from {msg.topic}: {error}"
+        )
+
+    except Exception as error:
+        print(
+            f"Unexpected error processing "
+            f"message from {msg.topic}: {error}"
+        )
 
 
 def main():
     create_database()
 
-    client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
+    if WEBHOOK_URL:
+        if not WEBHOOK_URL.startswith("https://"):
+            raise ValueError("MAINTENANCE_WEBHOOK_URL must use HTTPS.")
+        threading.Thread(target=notification_worker, daemon=True).start()
+        print("HIGH-severity webhook notifications enabled")
+    else:
+        print("Webhook notifications disabled (no URL configured)")
+
+    client = mqtt.Client(
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2
+    )
+
     client.on_connect = on_connect
     client.on_message = on_message
 
     print("MQTT Consumer Started")
-    print("Automatic Anomaly Detection Enabled")
+    print("Hybrid Anomaly Detection Enabled")
+    print("Original Z-score Detection Enabled for SKAB")
     print("Z-score threshold:", Z_THRESHOLD)
-    print("Alert cooldown:", ALERT_COOLDOWN, "seconds")
-    print("AI4I Random Forest prediction processing enabled")
-    print("Message schema version:", SCHEMA_VERSION)
-    print("Waiting for sensor and AI4I replay data...\n")
+    print(
+        "Alert cooldown:",
+        ALERT_COOLDOWN,
+        "seconds",
+    )
+    print(
+        "AI4I Random Forest prediction "
+        "processing enabled"
+    )
+    print(
+        "Message schema version:",
+        SCHEMA_VERSION,
+    )
+    print(
+        "Waiting for sensor and AI4I replay data...\n"
+    )
 
     try:
-        configure_mqtt_auth(client, "consumer")
-        client.connect(BROKER, PORT, 60)
+        configure_mqtt_auth(
+            client,
+            "consumer",
+        )
+
+        client.connect(
+            BROKER,
+            PORT,
+            60,
+        )
+
         client.loop_forever()
+
     except KeyboardInterrupt:
         print("\nConsumer stopped.")
+
     except Exception as error:
         print("Error:", error)
+
     finally:
         client.disconnect()
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

@@ -1,47 +1,397 @@
+
 # IoT-Based Predictive Maintenance System
 
-An end-to-end industrial equipment monitoring prototype that simulates five sensors, streams readings through MQTT, detects abnormal behaviour, records maintenance alerts, and provides a web dashboard with machine-failure prediction.
+## 1. Project Overview
 
-## Features
+An end-to-end IoT-based predictive maintenance prototype designed to monitor industrial equipment, identify abnormal operating conditions, generate maintenance recommendations and support machine-failure classification.
 
-- **Live sensor monitoring:** temperature, vibration, humidity, pressure and electrical current.
-- **MQTT streaming:** authenticated, TLS-enabled communication between the simulated publisher, Mosquitto broker and consumer.
-- **Hybrid anomaly detection:** temperature spikes, abnormal temperature increases, irregular vibration, and sustained humidity drift; additional simulated pressure/current faults support monitoring tests.
-- **Maintenance alerts:** severity levels, sensor-specific recommendations, alert history and maintenance management.
-- **Web dashboard:** Overview, Live Sensors, Maintenance Alerts, Reading History, Machine Failure Prediction, Replay Prediction Results and Maintenance Management.
-- **Failure classification:** a custom NumPy-based Random Forest trained on the AI4I 2020 dataset.
-- **Reproducibility:** evaluation scripts, automated tests, dataset attribution and saved evaluation results.
+The system integrates real-time sensor simulation, secure MQTT communication, hybrid anomaly detection, machine learning, persistent database storage and an interactive web dashboard.
 
-## System architecture
+The application also supports Docker-based deployment through four interconnected containerised services.
+
+## 2. Key Features
+
+- Real-time monitoring of five industrial sensor parameters.
+- Hybrid anomaly detection using thresholds, historical comparisons and sustained-trend analysis.
+- Machine-failure classification using a custom Random Forest model.
+- Multi-machine monitoring and asset identification.
+- Maintenance alerts with severity levels and recommendations.
+- Maintenance scheduling, acknowledgement and status tracking.
+- Machine status monitoring and notifications.
+- Historical sensor readings and prediction records.
+- Secure MQTT communication using TLS encryption.
+- Role-based MQTT authentication and access control.
+- Password-protected web dashboard.
+- Persistent SQLite database storage.
+- Docker-based application deployment.
+- Automated testing and reproducible evaluation scripts.
+
+## 3. System Architecture
 
 ```text
-Simulated sensors (5)
-        |
-        v
-MQTT Publisher --> Mosquitto Broker --> MQTT Consumer
-                                            |
-                                  Hybrid anomaly detection
-                                            |
-                                            v
-                                       SQLite database
-                                            |
-                                            v
-                                  Flask monitoring dashboard
-                                            |
-                                   Alerts and maintenance
+             Simulated Industrial Equipment
+                          |
+                          v
+                 Five Sensor Parameters
+                          |
+                          v
+                    MQTT Publisher
+                          |
+                    TLS Encryption
+                          |
+                          v
+                   Mosquitto Broker
+                          |
+                          v
+                    MQTT Consumer
+                          |
+                          v
+                Hybrid Anomaly Detection
+                          |
+                          v
+                    SQLite Database
+                          |
+                          v
+                    Flask Dashboard
+                          |
+          +---------------+---------------+
+          |               |               |
+       Monitoring       Alerts       Maintenance
+```
 
-AI4I dataset --> Feature processing --> Random Forest --> Failure classification
+### Machine Learning Workflow
+
+```text
+                  AI4I 2020 Dataset
+                          |
+                          v
+                  Data Preprocessing
+                          |
+                          v
+                  Feature Engineering
+                          |
+                          v
+                 Random Forest Model
+                          |
+                          v
+                  Failure Classification
+                          |
+                          v
+                   Dashboard Results
 ```
 
 The AI4I failure-classification workflow is separate from the live five-sensor anomaly-detection workflow.
 
-## Quick start: run the project on Windows
+## 4. Technologies Used
 
-**Prerequisites:** Python 3.12, Git, Mosquitto MQTT broker and Windows Command Prompt (CMD). The project was tested on Windows 10 ARM64 with Python 3.12.10. Use the **same cloned project folder** for every CMD window so all processes share the same local SQLite database.
+| Technology | Purpose |
+|---|---|
+| Python 3.12 | Core application development |
+| Flask | Web application and dashboard |
+| MQTT | Sensor data communication |
+| Eclipse Mosquitto | MQTT message broker |
+| Paho-MQTT | MQTT client implementation |
+| SQLite | Persistent data storage |
+| NumPy | Numerical processing and machine learning |
+| HTML, CSS, JavaScript | Dashboard interface |
+| Random Forest | Machine-failure classification |
+| Docker | Application containerisation |
+| Docker Compose | Multi-container orchestration |
+| TLS | Secure MQTT communication |
+| Git and GitHub | Version control |
 
-### 1. Clone and install
+The custom Random Forest implementation does not require scikit-learn at runtime.
 
-Copy the repository's HTTPS clone URL from GitHub:
+## 5. Sensor Monitoring
+
+| Sensor | Typical Simulated Range | Unit |
+|---|---:|---|
+| Temperature | 35-45 | °C |
+| Vibration | 1-5 | mm/s |
+| Humidity | 30-70 | % |
+| Pressure | 2-6 | bar |
+| Electrical Current | 5-20 | A |
+
+The sensor publisher generates normal operating readings and intentionally introduces abnormal conditions to demonstrate equipment monitoring.
+
+### Simulated Fault Conditions
+
+- Sudden temperature spikes.
+- Gradual temperature increases.
+- Irregular vibration.
+- Sustained humidity drift.
+- Pressure drops.
+- Electrical current surges.
+
+The hybrid detector combines direct thresholds, recent-history comparisons and sustained-trend checks.
+
+Detected anomalies are processed to generate severity levels and sensor-specific maintenance recommendations.
+
+## 6. MQTT Communication
+
+The application uses authenticated MQTT communication with TLS encryption on port 8883.
+
+### MQTT Topics
+
+| Topic | Purpose |
+|---|---|
+| factory/sensors | Simulated sensor readings |
+| factory/ai4i/replay | AI4I machine-record replay |
+
+### MQTT Access Control
+
+| User | Permission |
+|---|---|
+| maintenance_publisher | Publish sensor and replay data |
+| maintenance_consumer | Subscribe to sensor and replay data |
+
+Each sensor event includes traceability information such as:
+
+- Asset ID
+- Event ID
+- Run ID
+- Data source
+- Timestamp
+- Sensor units
+- Schema version
+- Synthetic-field metadata
+- Source-channel information
+
+## 7. Dashboard Modules
+
+| Module | Description |
+|---|---|
+| Overview | Equipment status and monitoring summary |
+| Live Sensors | Near-real-time sensor visualisation |
+| Maintenance Alerts | Anomalies, severity and recommendations |
+| Reading History | Historical sensor measurements |
+| Machine Failure Prediction | Manual machine-failure classification |
+| Replay Prediction Results | Stored AI4I replay predictions |
+| Maintenance Management | Maintenance scheduling and status tracking |
+| Notifications | Monitoring and maintenance notifications |
+
+Multi-machine filtering supports asset-specific monitoring and helps distinguish readings from different data sources.
+
+## 8. Docker Deployment
+
+The application has been successfully containerised and tested locally using Docker Desktop and Docker Compose.
+
+### Docker Architecture
+
+```text
+                 Docker Compose Network
++--------------------------------------------------+
+|                                                  |
+|  Publisher -----> MQTT Broker -----> Consumer    |
+|                       TLS                |        |
+|                                          v        |
+|                                    SQLite Data   |
+|                                          |        |
+|                                          v        |
+|                                    Dashboard     |
+|                                                  |
++------------------------------------------|-------+
+                                           |
+                                           v
+                                http://localhost:5000
+```
+
+### Docker Services
+
+| Container | Responsibility |
+|---|---|
+| mqtt | Secure Mosquitto MQTT broker |
+| publisher | Sensor simulation and fault generation |
+| consumer | Data ingestion and anomaly detection |
+| dashboard | Flask monitoring application |
+
+The publisher, consumer and dashboard share persistent project data through Docker bind mounts.
+
+### Deployment Verification
+
+Local Docker testing confirmed:
+
+- Successful application image builds.
+- All four containers running.
+- Authenticated MQTT communication.
+- TLS-encrypted broker connections.
+- Continuous simulated sensor publishing.
+- Live dashboard updates.
+- Database ingestion and maintenance alerts.
+- Successful dashboard authentication.
+
+The deployment was tested on Windows ARM64 using Docker Desktop with WSL 2.
+
+## 9. Running the Project Using Docker
+
+### 9.1 Prerequisites
+
+- Git
+- Docker Desktop with Docker Compose
+- WSL 2 for the Windows Docker Desktop setup
+- MQTT TLS certificates and authentication files
+
+Ensure Docker Desktop is running before executing the commands.
+
+### 9.2 Clone the Repository
+
+Copy the repository HTTPS URL from GitHub.
+
+```cmd
+git clone <YOUR_REPOSITORY_HTTPS_URL>
+cd <CLONED_PROJECT_FOLDER>
+```
+
+### 9.3 Verify Docker Installation
+
+```cmd
+docker --version
+docker compose version
+docker info
+```
+
+### 9.4 Configure MQTT Security
+
+Create a folder named `docker_mqtt_security` in the cloned project directory, or use a separate local security directory.
+
+The security directory must contain:
+
+```text
+docker_mqtt_security/
+    server.crt
+    server.key
+    project_passwords.txt
+    project_acl.txt
+```
+
+Generate a TLS certificate and private key using OpenSSL or another compatible certificate-generation utility.
+
+The certificate must include `mqtt` as a valid DNS name because the Python containers communicate with the broker using its Docker service name.
+
+For example, using OpenSSL:
+
+```bash
+openssl req -x509 -nodes -newkey rsa:2048 -days 365 -keyout server.key -out server.crt -subj "/CN=mqtt" -addext "subjectAltName=DNS:mqtt,DNS:localhost,IP:127.0.0.1"
+```
+
+Create the MQTT password file using the Mosquitto password utility.
+
+```cmd
+mosquitto_passwd -c project_passwords.txt maintenance_publisher
+mosquitto_passwd project_passwords.txt maintenance_consumer
+```
+
+Choose independent passwords for both accounts.
+
+Create `project_acl.txt` with the following content:
+
+```text
+user maintenance_publisher
+topic write factory/sensors
+topic write factory/ai4i/replay
+
+user maintenance_consumer
+topic read factory/sensors
+topic read factory/ai4i/replay
+```
+
+Ensure the Mosquitto container can read the required security files while keeping the private key and credentials protected.
+
+The supplied `docker/mosquitto.conf` defines the broker configuration.
+
+For an external security directory, specify its location:
+
+```cmd
+set "MQTT_SECURITY_DIR=<FULL_PATH_TO_SECURITY_FOLDER>"
+```
+
+If this variable is not specified, Docker Compose uses the project's `docker_mqtt_security` directory.
+
+### 9.5 Configure Application Credentials
+
+In Windows CMD, enter:
+
+```cmd
+set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password:
+set /p MQTT_CONSUMER_PASSWORD=Enter MQTT consumer password:
+set /p DASHBOARD_USERNAME=Enter dashboard username:
+set /p DASHBOARD_PASSWORD=Enter dashboard password:
+```
+
+The MQTT passwords must match the accounts created in the Mosquitto password file.
+
+The dashboard credentials can be chosen independently.
+
+These credentials are local configuration values and must not be committed to GitHub.
+
+### 9.6 Build and Start the Application
+
+```cmd
+docker compose config --quiet
+docker compose up -d --build
+```
+
+### 9.7 Verify Running Containers
+
+```cmd
+docker compose ps
+```
+
+The expected services are:
+
+```text
+mqtt
+publisher
+consumer
+dashboard
+```
+
+All four services should display an Up status.
+
+Check broker communication and sensor publishing:
+
+```cmd
+docker compose logs --tail=10 mqtt
+docker compose logs --tail=10 publisher
+```
+
+Successful authentication and continuously published sensor messages indicate that the streaming components are operating.
+
+### 9.8 Access the Dashboard
+
+Open the following address in a web browser:
+
+http://localhost:5000
+
+Sign in using the dashboard credentials configured earlier.
+
+Navigate to Live Sensors, Reading History and Maintenance Alerts to observe incoming sensor data.
+
+### 9.9 Docker Management Commands
+
+| Command | Purpose |
+|---|---|
+| docker compose up -d | Start the application |
+| docker compose up -d --build | Rebuild and start |
+| docker compose ps | Check container status |
+| docker compose logs --tail=20 | View recent logs |
+| docker compose restart | Restart services |
+| docker compose down | Stop and remove containers |
+
+The local SQLite data directory remains on the host computer when containers are stopped or removed.
+
+## 10. Alternative Installation: Windows Without Docker
+
+The application can also be executed directly using Python and Mosquitto.
+
+### 10.1 Prerequisites
+
+- Python 3.12
+- Git
+- Eclipse Mosquitto
+- Windows Command Prompt
+
+### 10.2 Install Dependencies
 
 ```cmd
 git clone <YOUR_REPOSITORY_HTTPS_URL>
@@ -51,191 +401,329 @@ venv\Scripts\activate
 python -m pip install -r requirements.txt
 ```
 
-### 2. Configure the MQTT broker (once per computer)
+### 10.3 Configure Mosquitto
 
-The Python clients expect a **running Mosquitto broker at `localhost:8883` with TLS**, two broker accounts and appropriate topic permissions:
+Configure a TLS-enabled Mosquitto listener on port 8883.
 
-| Role | MQTT username | Password variable |
-|---|---|---|
-| Consumer | `maintenance_consumer` | `MQTT_CONSUMER_PASSWORD` |
-| Publisher / AI4I replay | `maintenance_publisher` | `MQTT_PUBLISHER_PASSWORD` |
+Create the following MQTT accounts:
 
-Create the two accounts in the Mosquitto password file, choose their passwords, configure the broker's TLS listener and ACLs, and place the trusted local broker certificate at `%USERPROFILE%\mqtt_tls\server.crt`. The certificate must be valid for `localhost`. Start the broker using **your own configured Mosquitto configuration file**, or confirm that its Windows service is already running:
+- maintenance_publisher
+- maintenance_consumer
+
+Configure the corresponding topic access permissions described in Section 9.4.
+
+Place the trusted broker certificate at:
+
+```text
+%USERPROFILE%\mqtt_tls\server.crt
+```
+
+The certificate must be valid for localhost.
+
+Start Mosquitto using the configured broker file:
 
 ```cmd
 mosquitto -c <PATH_TO_YOUR_MOSQUITTO_CONFIG> -v
 ```
 
-The broker configuration, TLS certificates and passwords are **local setup items** and are not included in GitHub. Simply running an unsecured default Mosquitto broker will not satisfy the clients' TLS and authentication settings. Do not start a second broker if the configured broker service is already running.
+Alternatively, use an existing correctly configured Mosquitto Windows service.
 
-### 3. Start the MQTT consumer — CMD window 1
+### 10.4 Start the Consumer
 
-Open a new CMD window in the cloned project folder:
+Open CMD window 1 in the project folder:
 
 ```cmd
-cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
-set /p MQTT_CONSUMER_PASSWORD=Enter MQTT consumer password: 
+set /p MQTT_CONSUMER_PASSWORD=Enter MQTT consumer password:
 python -m messaging.consumer
 ```
 
-Enter the password assigned to `maintenance_consumer` in Mosquitto. **Keep this window running.** The consumer subscribes to sensor and replay topics, processes readings and stores alerts in SQLite.
+Keep this window running.
 
-### 4. Start the simulated sensor publisher — CMD window 2
+### 10.5 Start the Publisher
 
-Open another CMD window in the **same project folder**:
+Open CMD window 2 in the same project folder:
 
 ```cmd
-cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
-set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password: 
+set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password:
 python -m messaging.publisher
 ```
 
-Enter the password assigned to `maintenance_publisher` in Mosquitto. **Keep this window running.** It publishes sensor readings and simulated faults.
+Keep this window running.
 
-**To see new live readings and alerts, both the consumer and publisher must be running, alongside the MQTT broker.** Opening the dashboard alone only shows previously stored data (if any).
+### 10.6 Start the Dashboard
 
-### 5. Start the dashboard and sign in — CMD window 3
-
-Open a third CMD window in the **same project folder**:
+Open CMD window 3 in the same project folder:
 
 ```cmd
-cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
 set "DASHBOARD_USERNAME=admin"
-set /p DASHBOARD_PASSWORD=Enter dashboard login password: 
+set /p DASHBOARD_PASSWORD=Enter dashboard password:
 python -m dashboard.app
 ```
 
-Choose a dashboard password at the prompt. The dashboard login credentials are **separate from the MQTT passwords**. Keep this CMD window running, then open:
+Open:
 
-**http://127.0.0.1:5000**
+http://localhost:5000
 
-Sign in with username **`admin`** and the dashboard password you entered. Visit **Overview**, **Live Sensors**, **Maintenance Alerts** and **Reading History** to observe incoming data.
+Sign in using the configured dashboard credentials.
 
-> **Password note:** `set /p` displays the password while typing. Use these commands only in a trusted local environment and avoid sharing screenshots of credentials. Environment variables set in one CMD window do not automatically carry over to other windows.
+The broker, consumer and publisher must remain running to generate new live readings.
 
-### 6. Optional: populate replay prediction records
+### 10.7 Optional AI4I Replay
 
-With Mosquitto and the consumer still running, open another CMD window:
+With the native Mosquitto broker and consumer running, open another CMD window:
 
 ```cmd
-cd /d <FULL_PATH_TO_CLONED_PROJECT>
 venv\Scripts\activate
-set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password: 
+set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password:
 python -m messaging.ai4i_replay_publisher
 ```
 
-The replay publishes AI4I machine records for processing and storage. Refresh **Replay Prediction Results** in the dashboard to view saved replay predictions. The **Machine Failure Prediction** page also supports entering operating parameters manually.
+Refresh the Replay Prediction Results page to view stored predictions.
 
-### Quick troubleshooting
+The Machine Failure Prediction page also supports manual operating-parameter inputs.
 
-| Problem | Check |
+## 11. Datasets
+
+| Dataset | Application |
 |---|---|
-| No new live readings | Mosquitto, consumer **and** publisher must all be running. |
-| MQTT authentication error | Enter the password matching the correct Mosquitto account in that CMD window. |
-| MQTT TLS/certificate error | Verify port `8883`, broker TLS configuration and `%USERPROFILE%\mqtt_tls\server.crt`. |
-| Dashboard login fails | Set both `DASHBOARD_USERNAME` and `DASHBOARD_PASSWORD` **before** starting `python -m dashboard.app`. |
-| Dashboard shows no history | A fresh clone starts without the original developer's local SQLite history; generate readings first. |
-| Replay results do not appear | Run the AI4I replay, keep the consumer active and ensure all processes use the same clone. |
+| Simulated sensor data | Live monitoring and controlled fault injection |
+| AI4I 2020 | Machine-failure classification |
+| SKAB | Industrial anomaly-detection experiments |
+| NAB | Time-series anomaly-detection experiments |
 
-## Sensor simulation and anomaly detection
+Dataset provenance and redistribution information are provided in `DATASET_ATTRIBUTION.md`.
 
-| Sensor | Typical simulated range | Unit |
-|---|---|---|
-| Temperature | 35–45 | °C |
-| Vibration | 1–5 | mm/s |
-| Humidity | 30–70 | % |
-| Pressure | 2–6 | bar |
-| Current | 5–20 | A |
+The datasets support evaluation of different aspects of the predictive maintenance system.
 
-The publisher simulates temperature spikes, rising temperatures, vibration spikes, humidity drift, pressure drops and current surges. The live hybrid detector combines direct thresholds with recent-history comparisons and sustained-trend checks. Alert processing assigns severity levels and sensor-specific maintenance recommendations. The system also retains rolling Z-score detection for applicable evaluation/replay workflows.
+## 12. Machine Learning Model
 
-MQTT topics:
+The AI4I failure-classification model uses a custom Python and NumPy Random Forest implementation.
 
-- `factory/sensors` — simulated sensor readings.
-- `factory/ai4i/replay` — AI4I replay records.
+### Model Configuration
 
-Events include traceability metadata such as asset ID, source, timestamps, event ID, run ID, units and schema version. SQLite stores readings, alerts, predictions and maintenance-related records.
-
-## Dashboard modules
-
-| Module | Purpose |
-|---|---|
-| Overview | Latest sensor values, equipment status and monitoring summary |
-| Live Sensors | Near-real-time charts for all five sensors |
-| Maintenance Alerts | Detected anomalies, severity and recommendations |
-| Reading History | Stored sensor measurements and history controls |
-| Machine Failure Prediction | Manual AI4I operating inputs and failure classification |
-| Replay Prediction Results | Stored AI4I replay predictions |
-| Maintenance Management | Alert acknowledgement, maintenance scheduling and status tracking |
-
-## Model and evaluation results
-
-### AI4I 2020 — machine-failure classification
-
-A custom Python/NumPy Random Forest (25 trees, maximum depth 8) was trained and evaluated using the AI4I 2020 Predictive Maintenance dataset (10,000 records: 6,999 training, 1,500 validation and 1,501 test).
-
-| Held-out test metric | Result |
+| Parameter | Value |
 |---|---:|
-| Accuracy | **97.80%** |
-| Precision | **70.45%** |
-| Recall | **60.78%** |
-| F1-score | **65.26%** |
-| True positives / false positives | 31 / 13 |
-| False negatives / true negatives | 20 / 1,437 |
+| Total dataset records | 10,000 |
+| Training records | 6,999 |
+| Validation records | 1,500 |
+| Testing records | 1,501 |
+| Number of trees | 25 |
+| Maximum tree depth | 8 |
+| Classification threshold | 0.76 |
 
-The prediction page classifies the entered AI4I operating conditions as normal or failure risk. Its displayed model score reflects the Random Forest's voting score, not a calibrated probability of failure.
+The model evaluates operating conditions using machine parameters and engineered features.
 
-### Simulated sensor anomaly detection
+### Held-Out Test Results
 
-The hybrid detector was evaluated on labelled historical simulated-sensor runs and compared with a rolling Z-score baseline.
+| Evaluation Metric | Result |
+|---|---:|
+| Accuracy | 97.80% |
+| Precision | 70.45% |
+| Recall | 60.78% |
+| F1-score | 65.26% |
 
-| Fixed test run (418 readings) | Z-score baseline | Hybrid detector |
+### Confusion Matrix
+
+| Actual / Predicted | Normal | Failure |
 |---|---:|---:|
-| Precision | 45.98% | **87.05%** |
-| Recall | 68.18% | **68.75%** |
-| F1-score | 54.92% | **76.83%** |
-| False positives | 141 | **18** |
+| Normal | 1,437 | 13 |
+| Failure | 20 | 31 |
 
-The updated detector also passed targeted tests for gradual temperature increases and sustained humidity drift. Fixed run IDs make the comparison reproducible; they do not independently establish a previously untouched holdout set.
+The dashboard displays the Random Forest voting score as an indication of failure risk. This score is not a calibrated failure probability.
 
-Evaluation files:
+## 13. Hybrid Anomaly Detection Evaluation
+
+The hybrid anomaly detector was evaluated against a rolling Z-score baseline using a fixed historical simulated-sensor test run containing 418 readings.
+
+### Performance Comparison
+
+| Metric | Z-Score Baseline | Hybrid Detector |
+|---|---:|---:|
+| Precision | 45.98% | 87.05% |
+| Recall | 68.18% | 68.75% |
+| F1-score | 54.92% | 76.83% |
+| False Positives | 141 | 18 |
+
+### Key Improvements
+
+- Precision increased by 41.07 percentage points.
+- F1-score increased by 21.91 percentage points.
+- False positives decreased by approximately 87.23%.
+- Recall improved while false alerts were substantially reduced.
+- Targeted tests for gradual temperature increases and sustained humidity drift passed.
+
+These improvements demonstrate more reliable anomaly identification on the evaluated simulated-sensor run.
+
+Fixed run IDs support reproducibility of the comparison. The historical run is not independently established as an untouched holdout dataset.
+
+### Evaluation Commands
 
 ```cmd
 python -m detection.evaluate_hybrid
 python detection\evaluate_skab_final.py
 ```
 
-Saved reports include `results/hybrid_evaluation.json` and `results/skab_final_evaluation.json`. SKAB and NAB are used for additional anomaly-detection experiments; AI4I is used for failure classification.
+Saved evaluation reports include:
 
-## Testing
+```text
+results/hybrid_evaluation.json
+results/skab_final_evaluation.json
+```
 
-Run the automated test suite:
+## 14. Database and Data Management
+
+SQLite provides persistent storage for:
+
+- Sensor readings.
+- Detected anomalies.
+- Maintenance alerts.
+- Machine-failure predictions.
+- Alert acknowledgements.
+- Maintenance tasks and status records.
+
+Asset identifiers, source metadata, timestamps and run identifiers support data traceability.
+
+The project also includes database backup functionality.
+
+The local database is excluded from GitHub to avoid distributing machine-specific operational history.
+
+## 15. Security Implementation
+
+The application incorporates:
+
+- MQTT username and password authentication.
+- TLS-encrypted MQTT communication.
+- Topic-level access control.
+- Independent publisher and consumer permissions.
+- Dashboard authentication.
+- CSRF protection for maintenance actions.
+- SHA-256 integrity verification of the saved AI4I model.
+- Local environment-based credential configuration.
+- Docker network isolation and loopback-bound host ports.
+- Git and Docker exclusion rules for sensitive files.
+
+Passwords, TLS private keys and local database files are not intended for repository distribution.
+
+The dashboard is served over HTTP for local demonstration, while MQTT communication uses TLS encryption.
+
+## 16. Testing and Validation
+
+The project includes automated tests for sensor processing, anomaly detection and AI4I integration.
+
+Run:
 
 ```cmd
 run_tests.bat
 ```
 
-Or:
+Alternatively:
 
 ```cmd
 python -m unittest detection.test_consumer_integration detection.test_ai4i_integration detection.test_detector -q
 ```
 
-A clean-clone check on 22 November 2026 reported **28 passing automated tests**, successful authenticated MQTT sensor ingestion, dashboard sign-in and an AI4I replay of 100 records.
+A clean-clone verification conducted on 22 November 2026 reported:
 
-## Technologies
+- 28 passing automated tests.
+- Successful authenticated MQTT sensor ingestion.
+- Successful dashboard sign-in.
+- Successful AI4I replay of 100 records.
 
-Python 3.12, Flask, Paho-MQTT, Mosquitto, SQLite, NumPy, HTML, CSS, JavaScript and Git/GitHub. The final AI4I Random Forest implementation does not require scikit-learn at runtime.
+Additional local Docker verification conducted on 25 November 2026 confirmed successful container execution and live monitoring functionality using the manually configured security environment.
 
-## Security and datasets
+## 17. Project Structure
 
-The project uses MQTT username/password authentication, local TLS communication on port `8883`, broker ACLs, dashboard login, CSRF protection for maintenance actions and SHA-256 integrity verification for the saved AI4I model. **Never commit passwords, broker private keys or password files.** The supplied configuration is intended for a local demonstration environment.
+```text
+IoT_Predictive_Maintenance/
+|
+|-- dashboard/
+|   |-- app.py
+|
+|-- messaging/
+|   |-- publisher.py
+|   |-- consumer.py
+|   |-- mqtt_security.py
+|   |-- message_contract.py
+|   |-- ai4i_replay_publisher.py
+|
+|-- detection/
+|   |-- Training scripts
+|   |-- Evaluation scripts
+|   |-- Automated tests
+|
+|-- sensors/
+|   |-- Sensor replay scripts
+|
+|-- data/
+|   |-- Datasets
+|   |-- Local database
+|
+|-- models/
+|   |-- Trained machine learning model
+|
+|-- results/
+|   |-- Evaluation reports
+|
+|-- docker/
+|   |-- mosquitto.conf
+|
+|-- Dockerfile
+|-- docker-compose.yml
+|-- .dockerignore
+|-- .gitignore
+|-- requirements.txt
+|-- run_tests.bat
+|-- DATASET_ATTRIBUTION.md
+|-- README.md
+```
 
-Dataset provenance and redistribution information are recorded in `DATASET_ATTRIBUTION.md` (including AI4I, SKAB and NAB). The local SQLite database, broker credentials and TLS private material are not bundled with the repository.
+## 18. Troubleshooting
 
-## Summary
+| Problem | Recommended Check |
+|---|---|
+| Docker is not running | Start Docker Desktop |
+| Port 8883 is unavailable | Check for another running MQTT broker |
+| MQTT authentication fails | Verify account passwords and broker password file |
+| TLS connection fails | Verify certificate validity and mounted certificate paths |
+| Dashboard login fails | Check dashboard environment variables |
+| Sensor readings are not changing | Verify publisher, consumer and broker status |
+| Dashboard has no history | Generate readings after starting a fresh installation |
+| Replay predictions are missing | Run the AI4I replay with the consumer active |
 
-This project demonstrates a working IoT predictive-maintenance workflow: sensor simulation, authenticated streaming, anomaly detection, alert management, live visualisation, and machine-failure classification, supported by reproducible tests and evaluation results.
+Use HTTP rather than HTTPS when opening the local dashboard.
+
+## 19. Industrial Applications
+
+The proposed system demonstrates potential applications in:
+
+- Manufacturing equipment monitoring.
+- Industrial motor condition monitoring.
+- Equipment maintenance planning.
+- Early identification of abnormal operating conditions.
+- Reduction of unnecessary maintenance alerts.
+- Asset-specific monitoring.
+- Data-driven maintenance decision-making.
+
+## 20. Future Scope
+
+Potential extensions include:
+
+- Integration with physical industrial IoT sensors.
+- Cloud-based application deployment.
+- Integration with industrial maintenance management platforms.
+- Larger-scale multi-asset monitoring.
+- Further model validation using independent industrial datasets.
+- Improved failure forecasting and remaining useful life estimation.
+
+## 21. Conclusion
+
+The IoT-Based Predictive Maintenance System demonstrates an integrated workflow combining secure IoT communication, real-time equipment monitoring, hybrid anomaly detection, machine learning and maintenance management.
+
+The evaluated hybrid detector achieved 87.05% precision and substantially reduced false positives compared with the rolling Z-score baseline. The AI4I Random Forest achieved 97.80% accuracy on its held-out classification test.
+
+Docker-based deployment provides a structured multi-container architecture for running the application locally.
+
+The project combines practical software engineering, data analytics, IoT communication, cybersecurity and machine learning to support intelligent industrial maintenance.

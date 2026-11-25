@@ -40,3 +40,12 @@ data/NAB/
 add_ai4i_dashboard.py
 update_latest_replay_dashboard.py
 f1_f2_update_bundle/
+
+# Docker security and local credentials
+docker_mqtt_security/
+mqtt_security_backup.txt
+*.key
+*.pem
+*.crt
+project_passwords.txt
+README_before_F5.txt

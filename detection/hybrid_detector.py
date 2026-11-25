@@ -22,6 +22,8 @@ def detect_hybrid(history, readings):
     temperature = readings["temperature"]
     vibration = readings["vibration"]
     humidity = readings["humidity"]
+    pressure = readings["pressure"]
+    current = readings["current"]
 
     # 1. Sudden temperature spikes
     if temperature > 50:
@@ -89,5 +91,13 @@ def detect_hybrid(history, readings):
                 humidity_series[-1] - humidity_series[0] - 12,
                 0.01,
             )
+
+    # 7. Abnormal pressure drop
+    if pressure < 1.5:
+        anomalies["pressure"] = 1.5 - pressure
+
+    # 8. Electrical current surge
+    if current > 24:
+        anomalies["current"] = current - 24
 
     return anomalies
