@@ -1,6 +1,26 @@
 
 # IoT-Based Predictive Maintenance System
 
+## Faculty Mentors
+
+| Sl. No. | Name | E-Mail ID |
+|:---:|---|---|
+| 1 | Dr. J. Naveen | naveen.j@christuniversity.in |
+| 2 | Dr. Rakoth Kandan Sambandam | rakoth.kandan@christuniversity.in |
+
+## Student Team Details
+
+| Sl. No. | Name | Register Number | Class | E-Mail ID |
+|:---:|---|:---:|---|---|
+| 1 | Amy Jaison | 2460326 | 6 BTCS A | amy.jaison@btech.christuniversity.in |
+| 2 | Christa Fijo | 2460351 | 6 BTCS B | christa.fijo@btech.christuniversity.in |
+| 3 | Neha Tresa Boby | 2460411 | 6 BTCS C | neha.tresa@btech.christuniversity.in |
+| 4 | Rosepriya Franci George | 2460337 | 6 BTCS C | rosepriya.franci@btech.christuniversity.in |
+| 5 | Nithin Krishna K | 2462521 | 6 BTCS IoT | nithin.krishna@btech.christuniversity.in |
+| 6 | Adwaith Anilkumar | 2462503 | 6 BTCS IoT | adwaith.anilkumar@btech.christuniversity.in |
+
+---
+
 ## 1. Project Overview
 
 An end-to-end IoT-based predictive maintenance prototype designed to monitor industrial equipment, identify abnormal operating conditions, generate maintenance recommendations and support machine-failure classification.
