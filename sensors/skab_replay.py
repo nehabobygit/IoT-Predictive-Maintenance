@@ -1,3 +1,5 @@
+import argparse
+import os
 import csv
 import json
 import random
@@ -14,10 +16,8 @@ if str(BASE_DIR) not in sys.path:
 
 from messaging.message_contract import SENSOR_UNITS, build_metadata, new_id
 
-from messaging.mqtt_security import configure_mqtt_auth
+from messaging.mqtt_security import connect_configured
 
-BROKER = "localhost"
-PORT = 1883
 TOPIC = "factory/sensors"
 
 DATA_FOLDER = BASE_DIR / "data" / "SKAB-master" / "data" / "valve1"
@@ -44,7 +44,7 @@ SOURCE_CHANNELS = {
 SYNTHETIC_FIELDS = ["humidity"]
 
 
-def replay():
+def replay(limit=0, interval=0.05):
 
     run_id = new_id()
 
@@ -69,9 +69,7 @@ def replay():
                 f"No SKAB CSV files found in: {DATA_FOLDER}"
             )
 
-        configure_mqtt_auth(client, "publisher")
-
-        client.connect(BROKER, PORT, 60)
+        connect_configured(client, "publisher")
         client.loop_start()
 
         print("SKAB Dataset Replay Started")
@@ -166,7 +164,9 @@ def replay():
                         qos=1
                     )
 
-                    result.wait_for_publish()
+                    result.wait_for_publish(timeout=10)
+                    if not result.is_published():
+                        raise TimeoutError("MQTT broker did not acknowledge the SKAB event.")
 
                     published += 1
 
@@ -178,7 +178,12 @@ def replay():
                             "| Actual anomaly:", actual_anomaly,
                         )
 
-                    time.sleep(0.05)
+                    if limit and published >= limit:
+                        print("Records published:", published)
+                        print("Run ID:", run_id)
+                        return
+                    if interval:
+                        time.sleep(interval)
 
         print("\nSKAB dataset replay completed!")
         print("Records published:", published)
@@ -190,7 +195,7 @@ def replay():
 
     except Exception as error:
 
-        print("Error:", error)
+        raise RuntimeError("SKAB replay stopped unexpectedly") from error
 
     finally:
 
@@ -199,4 +204,10 @@ def replay():
 
 
 if __name__ == "__main__":
-    replay()
+    parser = argparse.ArgumentParser(description="Replay benchmark sensor readings over TLS MQTT.")
+    parser.add_argument("--limit", type=int, default=0, help="Maximum readings, or zero for the full dataset.")
+    parser.add_argument("--interval", type=float, default=0.05, help="Seconds between readings.")
+    args = parser.parse_args()
+    if args.limit < 0 or args.interval < 0:
+        parser.error("limit and interval must be nonnegative")
+    replay(args.limit, args.interval)

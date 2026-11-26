@@ -1,0 +1,130 @@
+{
+  "dataset": "Independent simulated episodes, seeds 600-619",
+  "model_type": "Five-sensor hybrid anomaly detector",
+  "selection": {
+    "validation_seeds": [
+      500,
+      514
+    ],
+    "precision_floor": 0.8414016172506739,
+    "progressive_scale": 0.75,
+    "tuning": {
+      "None": {
+        "accuracy": 0.728,
+        "precision": 0.8814016172506739,
+        "recall": 0.4732272069464544,
+        "f1_score": 0.615819209039548,
+        "false_positive_rate": 0.054388133498145856
+      },
+      "0.75": {
+        "accuracy": 0.8117777777777778,
+        "precision": 0.9114093959731544,
+        "recall": 0.6550892426435119,
+        "f1_score": 0.762278978388998,
+        "false_positive_rate": 0.054388133498145856
+      },
+      "1.0": {
+        "accuracy": 0.8077777777777778,
+        "precision": 0.9103260869565217,
+        "recall": 0.6464061746261457,
+        "f1_score": 0.7559943582510579,
+        "false_positive_rate": 0.054388133498145856
+      },
+      "1.25": {
+        "accuracy": 0.7926666666666666,
+        "precision": 0.905982905982906,
+        "recall": 0.613603473227207,
+        "f1_score": 0.731665228645384,
+        "false_positive_rate": 0.054388133498145856
+      },
+      "1.5": {
+        "accuracy": 0.768,
+        "precision": 0.8979118329466357,
+        "recall": 0.5600578871201157,
+        "f1_score": 0.6898395721925134,
+        "false_positive_rate": 0.054388133498145856
+      },
+      "1.75": {
+        "accuracy": 0.7513333333333333,
+        "precision": 0.8916256157635468,
+        "recall": 0.5238784370477568,
+        "f1_score": 0.6599817684594348,
+        "false_positive_rate": 0.054388133498145856
+      },
+      "rolling": {
+        "accuracy": 0.6413333333333333,
+        "precision": 0.5647756138865369,
+        "recall": 0.9652677279305355,
+        "f1_score": 0.7126068376068376,
+        "false_positive_rate": 0.6353522867737948
+      }
+    }
+  },
+  "baseline": {
+    "metrics": {
+      "accuracy": 0.6365,
+      "precision": 0.5540540540540541,
+      "recall": 0.9620111731843576,
+      "f1_score": 0.7031441404654961,
+      "false_positive_rate": 0.6271493212669683
+    },
+    "confusion_matrix": {
+      "true_positives": 2583,
+      "false_positives": 2079,
+      "false_negatives": 102,
+      "true_negatives": 1236
+    },
+    "test_records": 6000,
+    "test_failures": 2685,
+    "episodes_detected": 534,
+    "episodes_missed": 0,
+    "detection_delay_seconds_median": 0.0,
+    "false_alarm_episodes": 873,
+    "observed_hours": 3.3,
+    "false_alarm_episodes_per_8_hours": 2116.3636363636365
+  },
+  "prior_hybrid": {
+    "metrics": {
+      "accuracy": 0.7493333333333333,
+      "precision": 0.8817065287653523,
+      "recall": 0.5080074487895717,
+      "f1_score": 0.6446124763705104,
+      "false_positive_rate": 0.05520361990950226
+    },
+    "confusion_matrix": {
+      "true_positives": 1364,
+      "false_positives": 183,
+      "false_negatives": 1321,
+      "true_negatives": 3132
+    },
+    "test_records": 6000,
+    "test_failures": 2685,
+    "episodes_detected": 534,
+    "episodes_missed": 0,
+    "detection_delay_seconds_median": 0.0,
+    "false_alarm_episodes": 90,
+    "observed_hours": 3.3,
+    "false_alarm_episodes_per_8_hours": 218.1818181818182
+  },
+  "metrics": {
+    "accuracy": 0.8211666666666667,
+    "precision": 0.9074823053589485,
+    "recall": 0.6685288640595903,
+    "f1_score": 0.7698906283508471,
+    "false_positive_rate": 0.05520361990950226
+  },
+  "confusion_matrix": {
+    "true_positives": 1795,
+    "false_positives": 183,
+    "false_negatives": 890,
+    "true_negatives": 3132
+  },
+  "test_records": 6000,
+  "test_failures": 2685,
+  "episodes_detected": 534,
+  "episodes_missed": 0,
+  "detection_delay_seconds_median": 0.0,
+  "false_alarm_episodes": 90,
+  "observed_hours": 3.3,
+  "false_alarm_episodes_per_8_hours": 218.1818181818182
+}

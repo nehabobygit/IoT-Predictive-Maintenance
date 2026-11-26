@@ -1,0 +1,1051 @@
+{
+  "dataset": "SKAB valve2 and other groups",
+  "model_type": "Robust reference with persistence",
+  "evaluation": "Whole valve1 sequences for selection, other groups held out for this protocol",
+  "parameters": {
+    "threshold": 3,
+    "consecutive_samples": 1,
+    "warmup": 60
+  },
+  "validation_metrics": {
+    "accuracy": 0.45732558139534885,
+    "precision": 0.3753810661613249,
+    "recall": 0.7221429703598035,
+    "f1_score": 0.4939824352163071,
+    "false_positive_rate": 0.6960793315581673
+  },
+  "validation_sequences": [
+    "valve1/0.csv",
+    "valve1/1.csv",
+    "valve1/10.csv",
+    "valve1/11.csv",
+    "valve1/12.csv",
+    "valve1/13.csv",
+    "valve1/14.csv",
+    "valve1/15.csv",
+    "valve1/2.csv",
+    "valve1/3.csv",
+    "valve1/4.csv",
+    "valve1/5.csv",
+    "valve1/6.csv",
+    "valve1/7.csv",
+    "valve1/8.csv",
+    "valve1/9.csv"
+  ],
+  "test_sequences": {
+    "valve2/0.csv": "a6670e7a68c7c6ba62c649bd9d350633e80db624578e9529f2b736ced5e32bde",
+    "valve2/1.csv": "b35d27f664eb0851ab73e5eb06633404c7eeaf532edff7e40c68eb9379f2012b",
+    "valve2/2.csv": "2c3005cf28b88db715b7f4694e826ff252cba4dbb1eba679b040961f80477e60",
+    "valve2/3.csv": "86927555d5c523e587d41500bd5dee4e2468289ec1b988ac17755aeae697d7f8",
+    "other/1.csv": "3beaf861bdfe9b4f4eff8e7567c1dd3f506fbd0ce667fc9399d04bd2dc70623d",
+    "other/10.csv": "72683644f6f17689f619076a66a9ec02cbc0502bd669924c4c33951d1bdad9b0",
+    "other/11.csv": "98a2fff3b6516205ae2e12f2dd30d7f08465fe4321a1bd5cf823396985ecb37b",
+    "other/12.csv": "b0882efbcf2669223ae78bee61c9f10074a9b2375f0e86b8957ae5ce4aad1e72",
+    "other/13.csv": "b3f1da02064d11234836a9fa1a2536bb0d3b6c6998ab60b0b71869b98e94d860",
+    "other/14.csv": "c7f361e55397cc9efd4a76b6876111eda79b650d10aeb007342ca5972152eaef",
+    "other/2.csv": "951c326bf36366fa7615b8f28d22f80b3878036069a690f42b3e223737a6a8d1",
+    "other/3.csv": "f3c19a89f74f62a475c246b9263f161f7a734dd88304de803939cebaa55c7ebd",
+    "other/4.csv": "56ca23f4eb61d1347d079eb9a35c60a59b8b64e160c00dd0c2ec69e0df0b2a4b",
+    "other/5.csv": "7347b326df3a92c0810c69add0e5621939af7a1c1cb4755081d088e72d36920f",
+    "other/6.csv": "eb8f05622a62c855040ea358b87be35fb1a4a3720ba0610569bab384db4b6e04",
+    "other/7.csv": "1bee14f49bfc817ba2c335fb427baa71153d8f8ab52e72652f15f74e4b77daec",
+    "other/8.csv": "12c138ed99c198e0a7ece886fe01bfd16bbdde206fad6c5d74322b6b9d6488d0",
+    "other/9.csv": "11c4514b0bc706acff637fea6707ad9258ac878fe9dff3d0b11d2b618d94d8ea"
+  },
+  "units": {
+    "Accelerometer1RMS": "g",
+    "Temperature": "deg C",
+    "Current": "A",
+    "Pressure": "bar"
+  },
+  "baseline": {
+    "metrics": {
+      "accuracy": 0.48736303067011727,
+      "precision": 0.3798267093614617,
+      "recall": 0.5967741935483871,
+      "f1_score": 0.4642034990791897,
+      "false_positive_rate": 0.577479610628782
+    },
+    "confusion_matrix": {
+      "true_positives": 4033,
+      "false_positives": 6585,
+      "false_negatives": 2725,
+      "true_negatives": 4818
+    },
+    "test_records": 18161,
+    "test_failures": 6758,
+    "episodes_detected": 18,
+    "episodes_missed": 0,
+    "detection_delay_seconds_median": 0.0,
+    "false_alarm_episodes": 2704,
+    "observed_hours": 5.4675,
+    "false_alarm_episodes_per_8_hours": 3956.470050297211
+  },
+  "per_sequence": {
+    "valve2/0.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.539906103286385,
+          "precision": 0.4431279620853081,
+          "recall": 0.949238578680203,
+          "f1_score": 0.6042003231017771,
+          "false_positive_rate": 0.7004470938897168
+        },
+        "confusion_matrix": {
+          "true_positives": 374,
+          "false_positives": 470,
+          "false_negatives": 20,
+          "true_negatives": 201
+        },
+        "test_records": 1065,
+        "test_failures": 394,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 100,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 2537.444933920705
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.49577464788732395,
+          "precision": 0.38845553822152884,
+          "recall": 0.631979695431472,
+          "f1_score": 0.4811594202898551,
+          "false_positive_rate": 0.5842026825633383
+        },
+        "confusion_matrix": {
+          "true_positives": 249,
+          "false_positives": 392,
+          "false_negatives": 145,
+          "true_negatives": 279
+        },
+        "test_records": 1065,
+        "test_failures": 394,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 164,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 4161.409691629956
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "valve2/1.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.38384845463609174,
+          "precision": 0.31421121251629724,
+          "recall": 0.7237237237237237,
+          "f1_score": 0.4381818181818182,
+          "false_positive_rate": 0.7850746268656716
+        },
+        "confusion_matrix": {
+          "true_positives": 241,
+          "false_positives": 526,
+          "false_negatives": 92,
+          "true_negatives": 144
+        },
+        "test_records": 1003,
+        "test_failures": 333,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 28,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 710.4845814977973
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.47258225324027914,
+          "precision": 0.33666666666666667,
+          "recall": 0.6066066066066066,
+          "f1_score": 0.4330117899249732,
+          "false_positive_rate": 0.5940298507462687
+        },
+        "confusion_matrix": {
+          "true_positives": 202,
+          "false_positives": 398,
+          "false_negatives": 131,
+          "true_negatives": 272
+        },
+        "test_records": 1003,
+        "test_failures": 333,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 164,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 4161.409691629956
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "valve2/2.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.31711880261927033,
+          "precision": 0.28662420382165604,
+          "recall": 0.569620253164557,
+          "f1_score": 0.3813559322033898,
+          "false_positive_rate": 0.8308605341246291
+        },
+        "confusion_matrix": {
+          "true_positives": 225,
+          "false_positives": 560,
+          "false_negatives": 170,
+          "true_negatives": 114
+        },
+        "test_records": 1069,
+        "test_failures": 395,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 29,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 735.8590308370044
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.4883068288119738,
+          "precision": 0.38087774294670845,
+          "recall": 0.6151898734177215,
+          "f1_score": 0.47047434656340753,
+          "false_positive_rate": 0.586053412462908
+        },
+        "confusion_matrix": {
+          "true_positives": 243,
+          "false_positives": 395,
+          "false_negatives": 152,
+          "true_negatives": 279
+        },
+        "test_records": 1069,
+        "test_failures": 395,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 1.0,
+        "false_alarm_episodes": 169,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 4288.281938325991
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "valve2/3.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5775401069518716,
+          "precision": 0.0,
+          "recall": 0.0,
+          "f1_score": 0.0,
+          "false_positive_rate": 0.0
+        },
+        "confusion_matrix": {
+          "true_positives": 0,
+          "false_positives": 0,
+          "false_negatives": 395,
+          "true_negatives": 540
+        },
+        "test_records": 935,
+        "test_failures": 395,
+        "episodes_detected": 0,
+        "episodes_missed": 1,
+        "detection_delay_seconds_median": null,
+        "false_alarm_episodes": 0,
+        "observed_hours": 0.2763888888888889,
+        "false_alarm_episodes_per_8_hours": 0.0
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.49732620320855614,
+          "precision": 0.4319419237749546,
+          "recall": 0.6025316455696202,
+          "f1_score": 0.5031712473572939,
+          "false_positive_rate": 0.5796296296296296
+        },
+        "confusion_matrix": {
+          "true_positives": 238,
+          "false_positives": 313,
+          "false_negatives": 157,
+          "true_negatives": 227
+        },
+        "test_records": 935,
+        "test_failures": 395,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 131,
+        "observed_hours": 0.2763888888888889,
+        "false_alarm_episodes_per_8_hours": 3791.758793969849
+      },
+      "missed_episodes": [
+        {
+          "start": "2020-03-09T17:06:31",
+          "samples": 395
+        }
+      ],
+      "detection_delays_seconds": []
+    },
+    "other/1.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5007299270072992,
+          "precision": 0.35471698113207545,
+          "recall": 1.0,
+          "f1_score": 0.5236768802228412,
+          "false_positive_rate": 0.6881287726358148
+        },
+        "confusion_matrix": {
+          "true_positives": 188,
+          "false_positives": 342,
+          "false_negatives": 0,
+          "true_negatives": 155
+        },
+        "test_records": 685,
+        "test_failures": 188,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 41,
+        "observed_hours": 0.19916666666666666,
+        "false_alarm_episodes_per_8_hours": 1646.8619246861924
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.4554744525547445,
+          "precision": 0.2584856396866841,
+          "recall": 0.526595744680851,
+          "f1_score": 0.3467600700525394,
+          "false_positive_rate": 0.5714285714285714
+        },
+        "confusion_matrix": {
+          "true_positives": 99,
+          "false_positives": 284,
+          "false_negatives": 89,
+          "true_negatives": 213
+        },
+        "test_records": 685,
+        "test_failures": 188,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 116,
+        "observed_hours": 0.19916666666666666,
+        "false_alarm_episodes_per_8_hours": 4659.414225941423
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/10.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.6866614048934491,
+          "precision": 0.6753246753246753,
+          "recall": 0.621160409556314,
+          "f1_score": 0.6471111111111111,
+          "false_positive_rate": 0.25697503671071953
+        },
+        "confusion_matrix": {
+          "true_positives": 364,
+          "false_positives": 175,
+          "false_negatives": 222,
+          "true_negatives": 506
+        },
+        "test_records": 1267,
+        "test_failures": 586,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 79,
+        "observed_hours": 0.37083333333333335,
+        "false_alarm_episodes_per_8_hours": 1704.2696629213483
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.48382004735595896,
+          "precision": 0.45417789757412397,
+          "recall": 0.5750853242320819,
+          "f1_score": 0.5075301204819277,
+          "false_positive_rate": 0.5947136563876652
+        },
+        "confusion_matrix": {
+          "true_positives": 337,
+          "false_positives": 405,
+          "false_negatives": 249,
+          "true_negatives": 276
+        },
+        "test_records": 1267,
+        "test_failures": 586,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 145,
+        "observed_hours": 0.37083333333333335,
+        "false_alarm_episodes_per_8_hours": 3128.0898876404494
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/11.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.6017699115044248,
+          "precision": 0.5060240963855421,
+          "recall": 0.09312638580931264,
+          "f1_score": 0.15730337078651685,
+          "false_positive_rate": 0.060382916053019146
+        },
+        "confusion_matrix": {
+          "true_positives": 42,
+          "false_positives": 41,
+          "false_negatives": 409,
+          "true_negatives": 638
+        },
+        "test_records": 1130,
+        "test_failures": 451,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 7.0,
+        "false_alarm_episodes": 37,
+        "observed_hours": 0.3308333333333333,
+        "false_alarm_episodes_per_8_hours": 894.7103274559194
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.4778761061946903,
+          "precision": 0.3932411674347158,
+          "recall": 0.5676274944567627,
+          "f1_score": 0.4646098003629764,
+          "false_positive_rate": 0.5817378497790869
+        },
+        "confusion_matrix": {
+          "true_positives": 256,
+          "false_positives": 395,
+          "false_negatives": 195,
+          "true_negatives": 284
+        },
+        "test_records": 1130,
+        "test_failures": 451,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 1.0,
+        "false_alarm_episodes": 150,
+        "observed_hours": 0.3308333333333333,
+        "false_alarm_episodes_per_8_hours": 3627.2040302267
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        7.0
+      ]
+    },
+    "other/12.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.597165991902834,
+          "precision": 0.4180478821362799,
+          "recall": 0.7346278317152104,
+          "f1_score": 0.5328638497652582,
+          "false_positive_rate": 0.4653902798232695
+        },
+        "confusion_matrix": {
+          "true_positives": 227,
+          "false_positives": 316,
+          "false_negatives": 82,
+          "true_negatives": 363
+        },
+        "test_records": 988,
+        "test_failures": 309,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 150,
+        "observed_hours": 0.3163888888888889,
+        "false_alarm_episodes_per_8_hours": 3792.8007023705004
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.4848178137651822,
+          "precision": 0.3194945848375451,
+          "recall": 0.5728155339805825,
+          "f1_score": 0.4101969872537659,
+          "false_positive_rate": 0.5552282768777614
+        },
+        "confusion_matrix": {
+          "true_positives": 177,
+          "false_positives": 377,
+          "false_negatives": 132,
+          "true_negatives": 302
+        },
+        "test_records": 988,
+        "test_failures": 309,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 158,
+        "observed_hours": 0.3163888888888889,
+        "false_alarm_episodes_per_8_hours": 3995.083406496927
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/13.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.4055619930475087,
+          "precision": 0.3328840970350404,
+          "recall": 0.9320754716981132,
+          "f1_score": 0.49056603773584906,
+          "false_positive_rate": 0.8277591973244147
+        },
+        "confusion_matrix": {
+          "true_positives": 247,
+          "false_positives": 495,
+          "false_negatives": 18,
+          "true_negatives": 103
+        },
+        "test_records": 863,
+        "test_failures": 265,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 50,
+        "observed_hours": 0.29055555555555557,
+        "false_alarm_episodes_per_8_hours": 1376.6730401529637
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.4936268829663963,
+          "precision": 0.328,
+          "recall": 0.6188679245283019,
+          "f1_score": 0.4287581699346405,
+          "false_positive_rate": 0.5618729096989966
+        },
+        "confusion_matrix": {
+          "true_positives": 164,
+          "false_positives": 336,
+          "false_negatives": 101,
+          "true_negatives": 262
+        },
+        "test_records": 863,
+        "test_failures": 265,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 148,
+        "observed_hours": 0.29055555555555557,
+        "false_alarm_episodes_per_8_hours": 4074.9521988527727
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/14.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5502958579881657,
+          "precision": 0.40441176470588236,
+          "recall": 0.5463576158940397,
+          "f1_score": 0.4647887323943662,
+          "false_positive_rate": 0.44751381215469616
+        },
+        "confusion_matrix": {
+          "true_positives": 165,
+          "false_positives": 243,
+          "false_negatives": 137,
+          "true_negatives": 300
+        },
+        "test_records": 845,
+        "test_failures": 302,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 120,
+        "observed_hours": 0.24666666666666667,
+        "false_alarm_episodes_per_8_hours": 3891.891891891892
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.48284023668639053,
+          "precision": 0.35908141962421714,
+          "recall": 0.5695364238410596,
+          "f1_score": 0.44046094750320103,
+          "false_positive_rate": 0.565377532228361
+        },
+        "confusion_matrix": {
+          "true_positives": 172,
+          "false_positives": 307,
+          "false_negatives": 130,
+          "true_negatives": 236
+        },
+        "test_records": 845,
+        "test_failures": 302,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 2.0,
+        "false_alarm_episodes": 139,
+        "observed_hours": 0.24666666666666667,
+        "false_alarm_episodes_per_8_hours": 4508.108108108108
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/2.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5666666666666667,
+          "precision": 0.5571428571428572,
+          "recall": 0.9140625,
+          "f1_score": 0.6923076923076923,
+          "false_positive_rate": 0.8303571428571429
+        },
+        "confusion_matrix": {
+          "true_positives": 351,
+          "false_positives": 279,
+          "false_negatives": 33,
+          "true_negatives": 57
+        },
+        "test_records": 720,
+        "test_failures": 384,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 29,
+        "observed_hours": 0.27805555555555556,
+        "false_alarm_episodes_per_8_hours": 834.3656343656344
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.5166666666666667,
+          "precision": 0.5414746543778802,
+          "recall": 0.6119791666666666,
+          "f1_score": 0.5745721271393643,
+          "false_positive_rate": 0.5922619047619048
+        },
+        "confusion_matrix": {
+          "true_positives": 235,
+          "false_positives": 199,
+          "false_negatives": 149,
+          "true_negatives": 137
+        },
+        "test_records": 720,
+        "test_failures": 384,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 74,
+        "observed_hours": 0.27805555555555556,
+        "false_alarm_episodes_per_8_hours": 2129.070929070929
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/3.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5385329619312906,
+          "precision": 0.44155844155844154,
+          "recall": 0.9396984924623115,
+          "f1_score": 0.6008032128514056,
+          "false_positive_rate": 0.6966126656848306
+        },
+        "confusion_matrix": {
+          "true_positives": 374,
+          "false_positives": 473,
+          "false_negatives": 24,
+          "true_negatives": 206
+        },
+        "test_records": 1077,
+        "test_failures": 398,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 83,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 2106.079295154185
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.47075208913649025,
+          "precision": 0.35223367697594504,
+          "recall": 0.5150753768844221,
+          "f1_score": 0.41836734693877553,
+          "false_positive_rate": 0.5552282768777614
+        },
+        "confusion_matrix": {
+          "true_positives": 205,
+          "false_positives": 377,
+          "false_negatives": 193,
+          "true_negatives": 302
+        },
+        "test_records": 1077,
+        "test_failures": 398,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 181,
+        "observed_hours": 0.31527777777777777,
+        "false_alarm_episodes_per_8_hours": 4592.7753303964755
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/4.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.4297082228116711,
+          "precision": 0.36645299145299143,
+          "recall": 0.8683544303797468,
+          "f1_score": 0.5154019534184824,
+          "false_positive_rate": 0.8057065217391305
+        },
+        "confusion_matrix": {
+          "true_positives": 343,
+          "false_positives": 593,
+          "false_negatives": 52,
+          "true_negatives": 143
+        },
+        "test_records": 1131,
+        "test_failures": 395,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 76,
+        "observed_hours": 0.3313888888888889,
+        "false_alarm_episodes_per_8_hours": 1834.7024308466052
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.493368700265252,
+          "precision": 0.3630769230769231,
+          "recall": 0.5974683544303797,
+          "f1_score": 0.45167464114832534,
+          "false_positive_rate": 0.5625
+        },
+        "confusion_matrix": {
+          "true_positives": 236,
+          "false_positives": 414,
+          "false_negatives": 159,
+          "true_negatives": 322
+        },
+        "test_records": 1131,
+        "test_failures": 395,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 177,
+        "observed_hours": 0.3313888888888889,
+        "false_alarm_episodes_per_8_hours": 4272.9253981559095
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/5.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.6164383561643836,
+          "precision": 0.4939759036144578,
+          "recall": 1.0,
+          "f1_score": 0.6612903225806451,
+          "false_positive_rate": 0.6131386861313869
+        },
+        "confusion_matrix": {
+          "true_positives": 410,
+          "false_positives": 420,
+          "false_negatives": 0,
+          "true_negatives": 265
+        },
+        "test_records": 1095,
+        "test_failures": 410,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 132,
+        "observed_hours": 0.31805555555555554,
+        "false_alarm_episodes_per_8_hours": 3320.174672489083
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.4621004566210046,
+          "precision": 0.362095531587057,
+          "recall": 0.573170731707317,
+          "f1_score": 0.4438149197355996,
+          "false_positive_rate": 0.6043795620437956
+        },
+        "confusion_matrix": {
+          "true_positives": 235,
+          "false_positives": 414,
+          "false_negatives": 175,
+          "true_negatives": 271
+        },
+        "test_records": 1095,
+        "test_failures": 410,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 150,
+        "observed_hours": 0.31805555555555554,
+        "false_alarm_episodes_per_8_hours": 3772.92576419214
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/6.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.9264029438822448,
+          "precision": 0.8340248962655602,
+          "recall": 1.0,
+          "f1_score": 0.9095022624434389,
+          "false_positive_rate": 0.11678832116788321
+        },
+        "confusion_matrix": {
+          "true_positives": 402,
+          "false_positives": 80,
+          "false_negatives": 0,
+          "true_negatives": 605
+        },
+        "test_records": 1087,
+        "test_failures": 402,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 38,
+        "observed_hours": 0.3161111111111111,
+        "false_alarm_episodes_per_8_hours": 961.6871704745167
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.5243790248390064,
+          "precision": 0.4150664697193501,
+          "recall": 0.6990049751243781,
+          "f1_score": 0.5208526413345691,
+          "false_positive_rate": 0.5781021897810219
+        },
+        "confusion_matrix": {
+          "true_positives": 281,
+          "false_positives": 396,
+          "false_negatives": 121,
+          "true_negatives": 289
+        },
+        "test_records": 1087,
+        "test_failures": 402,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 165,
+        "observed_hours": 0.3161111111111111,
+        "false_alarm_episodes_per_8_hours": 4175.746924428822
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/7.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5737864077669903,
+          "precision": 0.44147582697201015,
+          "recall": 1.0,
+          "f1_score": 0.6125330979699912,
+          "false_positive_rate": 0.6427525622254758
+        },
+        "confusion_matrix": {
+          "true_positives": 347,
+          "false_positives": 439,
+          "false_negatives": 0,
+          "true_negatives": 244
+        },
+        "test_records": 1030,
+        "test_failures": 347,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 122,
+        "observed_hours": 0.2997222222222222,
+        "false_alarm_episodes_per_8_hours": 3256.348470806302
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.4912621359223301,
+          "precision": 0.3487179487179487,
+          "recall": 0.5878962536023055,
+          "f1_score": 0.43776824034334766,
+          "false_positive_rate": 0.5578330893118595
+        },
+        "confusion_matrix": {
+          "true_positives": 204,
+          "false_positives": 381,
+          "false_negatives": 143,
+          "true_negatives": 302
+        },
+        "test_records": 1030,
+        "test_failures": 347,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 1.0,
+        "false_alarm_episodes": 163,
+        "observed_hours": 0.2997222222222222,
+        "false_alarm_episodes_per_8_hours": 4350.695088044486
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    },
+    "other/8.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5538178472861086,
+          "precision": 0.378698224852071,
+          "recall": 0.3176178660049628,
+          "f1_score": 0.34547908232118757,
+          "false_positive_rate": 0.30701754385964913
+        },
+        "confusion_matrix": {
+          "true_positives": 128,
+          "false_positives": 210,
+          "false_negatives": 275,
+          "true_negatives": 474
+        },
+        "test_records": 1087,
+        "test_failures": 403,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 1.0,
+        "false_alarm_episodes": 69,
+        "observed_hours": 0.3163888888888889,
+        "false_alarm_episodes_per_8_hours": 1744.6883230904302
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.46550137994480223,
+          "precision": 0.3605015673981191,
+          "recall": 0.5707196029776674,
+          "f1_score": 0.44188280499519694,
+          "false_positive_rate": 0.5964912280701754
+        },
+        "confusion_matrix": {
+          "true_positives": 230,
+          "false_positives": 408,
+          "false_negatives": 173,
+          "true_negatives": 276
+        },
+        "test_records": 1087,
+        "test_failures": 403,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 147,
+        "observed_hours": 0.3163888888888889,
+        "false_alarm_episodes_per_8_hours": 3716.9446883230903
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        1.0
+      ]
+    },
+    "other/9.csv": {
+      "selected": {
+        "metrics": {
+          "accuracy": 0.5212177121771218,
+          "precision": 0.4358695652173913,
+          "recall": 1.0,
+          "f1_score": 0.607115821347464,
+          "false_positive_rate": 0.7598828696925329
+        },
+        "confusion_matrix": {
+          "true_positives": 401,
+          "false_positives": 519,
+          "false_negatives": 0,
+          "true_negatives": 164
+        },
+        "test_records": 1084,
+        "test_failures": 401,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 74,
+        "observed_hours": 0.31583333333333335,
+        "false_alarm_episodes_per_8_hours": 1874.4063324538258
+      },
+      "rolling_z": {
+        "metrics": {
+          "accuracy": 0.5156826568265682,
+          "precision": 0.4066265060240964,
+          "recall": 0.6733167082294265,
+          "f1_score": 0.5070422535211268,
+          "false_positive_rate": 0.5768667642752562
+        },
+        "confusion_matrix": {
+          "true_positives": 270,
+          "false_positives": 394,
+          "false_negatives": 131,
+          "true_negatives": 289
+        },
+        "test_records": 1084,
+        "test_failures": 401,
+        "episodes_detected": 1,
+        "episodes_missed": 0,
+        "detection_delay_seconds_median": 0.0,
+        "false_alarm_episodes": 163,
+        "observed_hours": 0.31583333333333335,
+        "false_alarm_episodes_per_8_hours": 4128.759894459103
+      },
+      "missed_episodes": [],
+      "detection_delays_seconds": [
+        0.0
+      ]
+    }
+  },
+  "limitations": [
+    "Prior project experiments inspected both final groups. They are disjoint in this run, but are not a novel external dataset.",
+    "The first 60 observations initialize a causal reference and are excluded from both scores.",
+    "Per-shift false alarm counts are extrapolated from the observed recorded duration."
+  ],
+  "metrics": {
+    "accuracy": 0.553438687296955,
+    "precision": 0.4386012715712988,
+    "recall": 0.714560520864161,
+    "f1_score": 0.5435614588023413,
+    "false_positive_rate": 0.5420503376304481
+  },
+  "confusion_matrix": {
+    "true_positives": 4829,
+    "false_positives": 6181,
+    "false_negatives": 1929,
+    "true_negatives": 5222
+  },
+  "test_records": 18161,
+  "test_failures": 6758,
+  "episodes_detected": 17,
+  "episodes_missed": 1,
+  "detection_delay_seconds_median": 0.0,
+  "false_alarm_episodes": 1257,
+  "observed_hours": 5.4675,
+  "false_alarm_episodes_per_8_hours": 1839.2318244170096
+}

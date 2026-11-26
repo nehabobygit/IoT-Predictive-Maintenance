@@ -1,11 +1,31 @@
 services:
   mqtt:
     image: eclipse-mosquitto:2
+    entrypoint: ["/bin/sh", "-ec"]
+    command:
+      - |
+        for file in server.crt server.key project_passwords.txt project_acl.txt; do
+          cp "/mosquitto/host-security/$$file" "/mosquitto/security/$$file"
+        done
+        chown mosquitto:mosquitto /mosquitto/security /mosquitto/security/*
+        chmod 700 /mosquitto/security
+        chmod 600 /mosquitto/security/*
+        sed '/^persistence /d' /mosquitto/config/mosquitto.conf > /mosquitto/security/runtime.conf
+        printf '%s\n' 'persistence true' 'persistence_location /mosquitto/data/' 'autosave_interval 10' >> /mosquitto/security/runtime.conf
+        exec /docker-entrypoint.sh /usr/sbin/mosquitto -c /mosquitto/security/runtime.conf
+    healthcheck:
+      test: ["CMD-SHELL", "netstat -ltn | grep -Eq ':8883[[:space:]].*LISTEN'"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
+    tmpfs:
+      - /mosquitto/security
     ports:
-      - "127.0.0.1:8883:8883"
+      - "127.0.0.1:${MQTT_HOST_PORT:-8883}:8883"
     volumes:
+      - mqtt-state:/mosquitto/data
       - ./docker/mosquitto.conf:/mosquitto/config/mosquitto.conf:ro
-      - ${USERPROFILE}/docker_mqtt_security:/mosquitto/security:ro
+      - ${MQTT_SECURITY_DIR:-./docker_mqtt_security}:/mosquitto/host-security:ro
     restart: unless-stopped
 
   dashboard:
@@ -13,39 +33,64 @@ services:
     command: python -m dashboard.app
     environment:
       DOCKER_ENV: "1"
-      DASHBOARD_USERNAME: ${DASHBOARD_USERNAME:?Username required}
-      DASHBOARD_PASSWORD: ${DASHBOARD_PASSWORD:?Password required}
+      IOT_ASSET_REGISTRY: "${IOT_ASSET_REGISTRY:-}"
+      DASHBOARD_SECURE_COOKIE: "${DASHBOARD_SECURE_COOKIE:-0}"
+      DASHBOARD_SECRET_KEY: "${DASHBOARD_SECRET_KEY:-}"
     ports:
-      - "127.0.0.1:5000:5000"
+      - "127.0.0.1:${DASHBOARD_HOST_PORT:-5000}:5000"
     volumes:
-      - ./data:/app/data
-    depends_on:
-      - mqtt
+      - "${IOT_DATA_DIR:-./data}:/app/data"
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:5000/healthz', timeout=2).close()"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     restart: unless-stopped
 
   consumer:
     build: .
-    command: python -m messaging.consumer
+    command: python -u -m messaging.consumer
     environment:
+      DOCKER_ENV: "1"
       MQTT_HOST: mqtt
       MQTT_PORT: "8883"
+      MQTT_CONNECT_TIMEOUT: "${MQTT_CONNECT_TIMEOUT:-8}"
+      IOT_ASSET_REGISTRY: "${IOT_ASSET_REGISTRY:-}"
+      MQTT_CONSUMER_CLIENT_ID: "${MQTT_CONSUMER_CLIENT_ID:-iot-maintenance-consumer}"
       MQTT_CONSUMER_PASSWORD: ${MQTT_CONSUMER_PASSWORD:?Consumer password required}
     volumes:
-      - ./data:/app/data
-      - ${USERPROFILE}/docker_mqtt_security/server.crt:/root/mqtt_tls/server.crt:ro
+      - "${IOT_DATA_DIR:-./data}:/app/data"
+      - ${MQTT_SECURITY_DIR:-./docker_mqtt_security}/server.crt:/root/mqtt_tls/server.crt:ro
+    healthcheck:
+      test: ["CMD", "test", "-f", "/tmp/iot-consumer-ready"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     depends_on:
-      - mqtt
+      mqtt:
+        condition: service_healthy
     restart: unless-stopped
   publisher:
     build: .
     command: python -u -m messaging.publisher
     environment:
+      DOCKER_ENV: "1"
       MQTT_HOST: mqtt
       MQTT_PUBLISHER_PASSWORD: ${MQTT_PUBLISHER_PASSWORD:?Publisher password required}
     volumes:
-      - ./data:/app/data
-      - ${USERPROFILE}/docker_mqtt_security/server.crt:/root/mqtt_tls/server.crt:ro
+      - "${IOT_DATA_DIR:-./data}:/app/data"
+      - ${MQTT_SECURITY_DIR:-./docker_mqtt_security}/server.crt:/root/mqtt_tls/server.crt:ro
+    healthcheck:
+      test: ["CMD", "python", "-c", "from pathlib import Path; import time; assert time.time()-Path('/tmp/iot-publisher-ready').stat().st_mtime < 20"]
+      interval: 5s
+      timeout: 3s
+      retries: 12
     depends_on:
-      - mqtt
-      - consumer
+      mqtt:
+        condition: service_healthy
+      consumer:
+        condition: service_healthy
     restart: unless-stopped
+
+volumes:
+  mqtt-state:

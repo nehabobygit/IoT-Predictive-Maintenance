@@ -1,20 +1,26 @@
+from contextlib import closing
 import sqlite3
 import json
-import pickle
 import secrets
 import os
-import hmac
-from datetime import datetime, timezone, timedelta
-from pathlib import Path
-from flask import Flask, render_template_string, request, redirect, url_for, session, abort
-from messaging.model_security import verify_ai4i_model
+from datetime import datetime, timezone
+from importlib.resources import files
+from flask import Flask, render_template_string, request, redirect, url_for, session, abort, jsonify, send_file, flash
+from werkzeug.security import check_password_hash, generate_password_hash
+from dashboard.accounts import (authenticate_form, bootstrap, init_accounts, reserve_login,
+                                valid_credentials)
+from dashboard.maintenance import apply_action, migrate as migrate_maintenance
+from messaging.asset_registry import ASSETS
+from dashboard.monitoring import model_evaluations, monitoring_snapshot
+from detection.train_ai4i_improved import operating_features
+from messaging.consumer import DB_PATH, create_database, load_ai4i_model, score_ai4i
 
 app = Flask(__name__)
-app.secret_key = secrets.token_hex(32)  # Local-session CSRF protection; restart invalidates sessions.
-
-BASE_DIR = Path(__file__).resolve().parent.parent
-DB_PATH = BASE_DIR / "data" / "sensor_readings.db"
-MODEL_PATH = BASE_DIR / "models" / "ai4i_random_forest.pkl"
+app.config.update(
+    SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE="Lax",
+    SESSION_COOKIE_SECURE=bool(os.getenv("DASHBOARD_TLS_CERT")) or os.getenv("DASHBOARD_SECURE_COOKIE") == "1",
+)
+app.secret_key = os.getenv("DASHBOARD_SECRET_KEY") or secrets.token_hex(32)  # Local-session CSRF protection; restart invalidates sessions.
 
 SENSORS = [
     "temperature",
@@ -25,6 +31,7 @@ SENSORS = [
 ]
 
 SENSOR_LABELS = {
+    "maintenance": "Maintenance Forecast",
     "temperature": "Temperature",
     "vibration": "Vibration",
     "humidity": "Humidity",
@@ -60,7 +67,9 @@ HTML = """
     <meta name="viewport" content="width=device-width, initial-scale=1">
     {% if page not in ("prediction", "maintenance") %}<meta http-equiv="refresh" content="5">{% endif %}
 
-    <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+    {% if page == "sensors" %}
+    <script src="{{ url_for('plotly_asset') }}"></script>
+    {% endif %}
 
     <style>
         * {
@@ -766,22 +775,21 @@ HTML = """
                 <strong>System overview:</strong>
                 Monitor equipment readings, review important
                 maintenance alerts and identify unusual sensor behaviour.
-                Alerts are early warning indicators, not confirmation
-                that equipment has failed.
+                Alerts show deviations that may require inspection.
             </div>
 
             <h2>Equipment Status</h2>
 
-            <div class="card" style="margin: 14px 0 18px; border-left: 4px solid {{ '#26834a' if machine_status == 'NORMAL' else '#e67e22' if machine_status == 'WARNING' else '#718087' }};">
+            <div class="card" style="margin: 14px 0 18px; border-left: 4px solid {{ '#26834a' if machine_status == 'NORMAL' else '#e67e22' if machine_status == 'WARNING' else '#c0392b' if machine_status == 'CRITICAL' else '#718087' }};">
                 <div class="card-label">Current Machine Status</div>
-                <div class="sensor-value" style="margin: 8px 0; color: {{ '#26834a' if machine_status == 'NORMAL' else '#e67e22' if machine_status == 'WARNING' else '#718087' }};">
+                <div class="sensor-value" style="margin: 8px 0; color: {{ '#26834a' if machine_status == 'NORMAL' else '#e67e22' if machine_status == 'WARNING' else '#c0392b' if machine_status == 'CRITICAL' else '#718087' }};">
                     {{ machine_status }}
                 </div>
                 <div class="small-text">{{ machine_status_detail }}</div>
             </div>
 
             <p class="section-description">
-                Latest readings received from all five sensors. Asset: {{ latest_asset or "Unknown" }} | Source: {{ latest_source or "Unknown" }}.
+                Latest readings from {{ latest_asset or "Unknown" }} &middot; {{ latest_source or "Unknown" }}{% if timestamps %} &middot; {{ timestamps[-1] }} UTC{% endif %}.
             </p>
 
             {% if latest %}
@@ -828,6 +836,32 @@ HTML = """
 
             {% endif %}
 
+
+            <h2>Machine Health</h2>
+            <p class="section-description">
+                {{ fleet.machines|length }} monitored &middot; {{ fleet.counts.healthy }} healthy &middot;
+                {{ fleet.counts.attention }} require attention &middot; {{ fleet.counts.critical }} critical &middot;
+                {{ fleet.counts.offline }} stale &middot; {{ fleet.counts.unrated }} live replay
+            </p>
+            <p class="section-description">{{ fleet.active_anomalies }} anomalies on latest readings ?
+                {{ fleet.active_alerts }} unacknowledged alerts in the last two minutes</p>
+            {% if fleet.machines %}
+            <div class="table-container">
+                <table>
+                    <tr><th>Machine</th><th>Status</th><th>Last Reading (UTC)</th><th>Maintenance Outlook</th></tr>
+                    {% for machine in fleet.machines %}
+                    <tr>
+                        <td>{{ machine.asset_id }}</td><td>{{ machine.status|capitalize }}</td><td>{{ machine.timestamp }}</td>
+                        <td>{% if machine.forecast %}
+                            {{ "Inspect equipment" if machine.forecast.warning else "Monitor" }} &middot;
+                            {{ "%.1f"|format(machine.forecast.score * 100) }}% model score over
+                            {{ machine.forecast.horizon_seconds }} s
+                            {% else %}Forecast unavailable{% endif %}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            {% endif %}
 
             <h2>Maintenance Alert Summary</h2>
 
@@ -899,8 +933,9 @@ HTML = """
                                     {{ alert[4] }}
                                 </td>
                                 <td class="recommendation">
-                                    {{ alert[5] }}
+                                    {{ alert[5] }}{% if alert[10] %}<br>{{ alert[9]|replace("_", " ")|capitalize }} &middot; {{ alert[10] }}{% endif %}
                                 </td>
+                                <td>{{ "Acknowledged" if alert[11] else "Open" }}</td>
                             </tr>
                         {% endfor %}
                     </table>
@@ -1003,7 +1038,7 @@ HTML = """
                         </div>
 
                         <div class="small-text">
-                            Latest recorded reading
+                            {{ timestamps[-1] }} UTC
                         </div>
                     </div>
 
@@ -1162,7 +1197,8 @@ HTML = """
                             <th>Reading</th>
                             <th>Z-score</th>
                             <th>Severity</th>
-                            <th>Recommended Maintenance Action</th>
+                            <th>Explanation and Maintenance Action</th>
+                            <th>Status</th>
                         </tr>
 
                         {% for alert in alerts %}
@@ -1177,8 +1213,9 @@ HTML = """
                                     {{ alert[4] }}
                                 </td>
                                 <td class="recommendation">
-                                    {{ alert[5] }}
+                                    {{ alert[5] }}{% if alert[10] %}<br>{{ alert[9]|replace("_", " ")|capitalize }} &middot; {{ alert[10] }}{% endif %}
                                 </td>
+                                <td>{{ "Acknowledged" if alert[11] else "Open" }}</td>
                             </tr>
 
                         {% endfor %}
@@ -1209,6 +1246,24 @@ HTML = """
                 </div>
             {% endif %}
 
+            <h2>Recent Anomaly Events</h2>
+            {% if anomaly_events %}
+            <div class="table-container">
+                <table>
+                    <tr><th>Time (UTC)</th><th>Machine</th><th>Sensor</th><th>Severity</th><th>Reason</th></tr>
+                    {% for time, machine, sensor, severity, category, reason in anomaly_events %}
+                    <tr>
+                        <td>{{ time }}</td><td>{{ machine }}</td><td>{{ sensor_labels.get(sensor, sensor) }}</td>
+                        <td class="{{ severity }}">{{ severity }}</td>
+                        <td>{{ category|replace("_", " ")|capitalize }} &middot; {{ reason }}</td>
+                    </tr>
+                    {% endfor %}
+                </table>
+            </div>
+            {% else %}
+            <div class="empty-message">No anomaly events recorded for these filters.</div>
+            {% endif %}
+
             <h2>Understanding Severity</h2>
 
             <div class="severity-grid">
@@ -1218,7 +1273,7 @@ HTML = """
                         HIGH - Immediate Attention
                     </strong>
                     <br><br>
-                    Absolute Z-score of 5 or above.
+                    Significant deviation or a high live-model score.
                     Inspect the equipment and investigate the reading.
                 </div>
 
@@ -1227,7 +1282,7 @@ HTML = """
                         MEDIUM - Investigate
                     </strong>
                     <br><br>
-                    Absolute Z-score from 3.5 up to, but not including, 5.
+                    A substantial deviation or several concurrent warning signs.
                     Investigate the sensor and operating conditions.
                 </div>
 
@@ -1236,7 +1291,7 @@ HTML = """
                         LOW - Monitor
                     </strong>
                     <br><br>
-                    Absolute Z-score above 1.5 but below 3.5.
+                    A smaller deviation or early trend.
                     Continue monitoring for further changes.
                 </div>
 
@@ -1248,7 +1303,7 @@ HTML = """
             <div class="info-banner">
                 <strong>AI-based machine failure prediction:</strong>
                 Enter machine operating parameters to estimate the likelihood
-                of failure using the trained Random Forest model.
+                of a concurrent failure using the trained classifier.
                 This model was trained on the AI4I 2020 dataset and is separate
                 from the live MQTT sensor anomaly detector.
             </div>
@@ -1335,9 +1390,7 @@ HTML = """
                     </p>
 
                     <p class="small-text">
-                        The score represents the proportion of Random Forest trees
-                        voting for failure. It is a model score, not a calibrated
-                        real-world probability or a guarantee of failure.
+                        The score averages the classifier's tree estimates for these operating inputs.
                     </p>
                 </div>
             {% endif %}
@@ -1346,31 +1399,51 @@ HTML = """
                 <div class="prediction-error">{{ prediction_error }}</div>
             {% endif %}
 
-            <h2>About This Model</h2>
-            <div class="detail-grid">
-                <div class="detail-card">
-                    <div class="card-label">Algorithm</div>
-                    <div class="detail-value">Random Forest Classifier</div>
+            <h2>Model Performance</h2>
+            {% for model_key, title in (("ai4i", "AI4I failure classification"), ("live", "Simulated equipment forecast"),
+                   ("simulator", "Simulator anomaly detection"), ("skab", "SKAB recorded anomaly detection")) %}
+                {% set report = evaluations[model_key] %}
+                <h3>{{ title }}</h3>
+                <p class="section-description">{{ report.model_type }} &middot; {{ report.dataset }} &middot;
+                    {{ report.test_records }} held-out readings &middot; {{ report.test_failures }} positives</p>
+                <div class="detail-grid">
+                    {% for key, label in (("accuracy", "Accuracy"), ("precision", "Precision"), ("recall", "Recall"),
+                                         ("f1_score", "F1 Score"), ("roc_auc", "ROC AUC"), ("pr_auc", "PR AUC (AP)")) %}
+                    {% if key in report.metrics %}
+                    <div class="detail-card">
+                        <div class="card-label">{{ label }}</div>
+                        <div class="detail-value">{{ "%.2f"|format(report.metrics[key] * 100) }}%</div>
+                    </div>
+                    {% endif %}
+                    {% endfor %}
                 </div>
-                <div class="detail-card">
-                    <div class="card-label">Training Dataset</div>
-                    <div class="detail-value">AI4I 2020 Predictive Maintenance</div>
+                {% if report.episodes_detected is defined %}
+                <p class="section-description">{{ report.episodes_detected }} episodes detected,
+                    {{ report.episodes_missed }} missed. Median detection delay {{ report.detection_delay_seconds_median }} s.</p>
+                {% endif %}
+                {% set matrix = report.confusion_matrix %}
+                <div class="table-container">
+                    <table>
+                        <tr><th>Actual class</th><th>Predicted normal</th><th>Predicted failure</th></tr>
+                        <tr><td>Normal</td><td>{{ matrix.true_negatives }}</td><td>{{ matrix.false_positives }}</td></tr>
+                        <tr><td>Failure</td><td>{{ matrix.false_negatives }}</td><td>{{ matrix.true_positives }}</td></tr>
+                    </table>
                 </div>
-                <div class="detail-card">
-                    <div class="card-label">Held-out Test Accuracy</div>
-                    <div class="detail-value">97.80%</div>
-                </div>
-                <div class="detail-card">
-                    <div class="card-label">Held-out Test F1 Score</div>
-                    <div class="detail-value">65.26%</div>
-                </div>
+            {% endfor %}
+            <h3>AI4I validation comparison</h3>
+            <div class="table-container">
+                <table>
+                    <tr><th>Model</th><th>Precision</th><th>Recall</th><th>F1 Score</th><th>PR AUC (AP)</th></tr>
+                    {% for model in evaluations.ai4i.validation_comparison %}
+                    <tr><td>{{ model.name }}</td>
+                        {% for metric in ("precision", "recall", "f1_score", "pr_auc") %}
+                        <td>{{ "%.2f"|format(model.metrics[metric] * 100) }}%</td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </table>
             </div>
-
-            <p class="section-description" style="margin-top: 15px;">
-                The AI4I dataset is synthetic. Model performance on this dataset
-                does not guarantee the same performance on real industrial equipment.
-            </p>
-
+            <p class="section-description">AI4I uses synthetic concurrent failure labels. The live model forecasts simulated breakdowns over six samples. SKAB describes recorded test-rig experiments.</p>
 
         {% elif page == "ai4i_replay" %}
 
@@ -1574,9 +1647,8 @@ HTML = """
             {% endif %}
 
             <p class="section-description" style="margin-top: 15px;">
-                The failure score is the proportion of Random Forest trees voting for failure;
-                it is not a calibrated real-world probability. Replay accuracy describes only
-                the records currently stored from the AI4I dataset and is not the model's held-out test accuracy.
+                The failure score averages the classifier's tree estimates.
+                Replay accuracy uses the AI4I records in this replay. Held-out evaluation is available on the prediction page.
             </p>
 
 
@@ -1588,21 +1660,23 @@ HTML = """
             {% if maintenance_notice %}<div class="maintenance-success">{{ maintenance_notice }}</div>{% endif %}
             {% if maintenance_error %}<div class="maintenance-error">{{ maintenance_error }}</div>{% endif %}
 
+            {% if can_manage %}
             <h2>Schedule Maintenance</h2>
             <form method="POST" action="{{ url_for('maintenance_action') }}" class="prediction-form maintenance-form">
                 <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="asset" value="{{ selected_asset }}">
                 <input type="hidden" name="action" value="schedule">
-                <input name="asset_id" maxlength="100" placeholder="Asset ID" required aria-label="Asset ID">
+                <input type="number" name="alert_id" min="1" placeholder="Originating alert ID" required aria-label="Originating alert ID">
                 <input name="assigned_to" maxlength="80" placeholder="Assigned engineer" required aria-label="Assigned engineer">
                 <select name="priority" aria-label="Priority"><option>HIGH</option><option selected>MEDIUM</option><option>LOW</option></select>
                 <input type="datetime-local" name="scheduled_for" required aria-label="Scheduled time">
-                <textarea name="description" maxlength="1000" placeholder="Maintenance task" required aria-label="Maintenance task"></textarea>
+                <textarea name="description" maxlength="1000" placeholder="Task description or leave blank to use the alert recommendation" aria-label="Maintenance task"></textarea>
                 <button type="submit" class="filter-button">Schedule Task</button>
                 <div class="maintenance-note">Enter the scheduled date and time in the factory's local time zone.</div>
             </form>
 
 
+            {% endif %}
             <h2>Review Alerts</h2>
             <p class="section-description">Filter historical alerts and acknowledge those requiring review. Acknowledgement does not mean maintenance is complete.</p>
             <form method="GET" action="/" class="filter-bar">
@@ -1637,18 +1711,17 @@ HTML = """
                 <tr><th>Time</th><th>Asset / Source</th><th>Sensor</th><th>Severity</th><th>Review Status</th><th>Action</th></tr>
                 {% for alert in maintenance_alerts %}
                 <tr>
-                    <td>{{ alert[1] }}</td><td>{{ alert[4] or "Unknown" }} / {{ alert[5] or "Unknown" }}</td>
+                    <td>{{ alert[1] }}<div class="small-text">Alert #{{ alert[0] }}</div></td><td>{{ alert[4] or "Unknown" }} / {{ alert[5] or "Unknown" }}</td>
                     <td>{{ sensor_labels.get(alert[2], alert[2]) }}</td>
                     <td class="{{ alert[3] }}">{{ alert[3] }}</td>
                     <td>{{ "Acknowledged by " + alert[6] if alert[6] else "Unacknowledged" }}</td>
                     <td>
-                        {% if not alert[6] %}
+                        {% if not alert[6] and can_manage %}
                         <form method="POST" action="{{ url_for('maintenance_action') }}" class="maintenance-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="asset" value="{{ selected_asset }}">
                             <input type="hidden" name="action" value="acknowledge">
                             <input type="hidden" name="alert_id" value="{{ alert[0] }}">
-                            <input name="operator" maxlength="80" placeholder="Operator name" required aria-label="Operator name">
                             <button type="submit" class="filter-button">Acknowledge</button>
                         </form>
                         {% else %}<span class="small-text">{{ alert[7] }}</span>{% endif %}
@@ -1674,9 +1747,19 @@ HTML = """
                 {% for task in maintenance_tasks %}
                 <tr>
                     <td>{{ task[1] }}</td><td>{{ task[2] }}</td><td class="{{ task[3] }}">{{ task[3] }}</td>
-                    <td>{{ task[4] }}</td><td>{{ task[5] }}</td><td class="recommendation">{{ task[6] }}</td>
+                    <td>{{ task[4] }}</td><td>{{ task[5] }}</td><td class="recommendation">{{ task[6] }}{% if task[10] %}<div class="small-text">Alert #{{ task[10] }}</div>{% endif %}</td>
                     <td>{{ task[7] }}{% if task[8] %}<div class="small-text">Completed: {{ task[8] }}</div>{% endif %}</td>
-                    <td>{% if task[7] == 'SCHEDULED' %}
+                    <td>{% if task[7] == 'SCHEDULED' and can_manage %}
+                        <form method="POST" action="{{ url_for('maintenance_action') }}" class="maintenance-form">
+                            <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
+                            <input type="hidden" name="action" value="update">
+                            <input type="hidden" name="asset" value="{{ selected_asset }}">
+                            <input type="hidden" name="task_id" value="{{ task[0] }}">
+                            <input name="assigned_to" value="{{ task[4] }}" required maxlength="80" aria-label="Assigned engineer">
+                            <select name="priority" aria-label="Priority">{% for level in ['HIGH','MEDIUM','LOW'] %}
+                                <option {% if task[3] == level %}selected{% endif %}>{{ level }}</option>{% endfor %}</select>
+                            <button type="submit" class="filter-button">Update Assignment</button>
+                        </form>
                         <form method="POST" action="{{ url_for('maintenance_action') }}" class="maintenance-form">
                             <input type="hidden" name="csrf_token" value="{{ csrf_token }}">
                 <input type="hidden" name="asset" value="{{ selected_asset }}">
@@ -1691,6 +1774,21 @@ HTML = """
             </table></div>
             {% else %}<div class="empty-message">No maintenance tasks have been scheduled.</div>{% endif %}
             <p class="maintenance-note">Showing the latest 100 tasks. Work records are operator-entered and are not automatically verified against physical equipment.</p>
+            <h2>Maintenance Audit History</h2>
+            <form method="POST" action="{{ url_for('dashboard_logout') }}" class="maintenance-form">
+                <input type="hidden" name="csrf_token" value="{{ logout_csrf }}">
+                <button type="submit" class="filter-button">Sign out</button>
+            </form>
+            {% if audit_rows %}
+            <div class="table-container"><table>
+                <tr><th>Time (UTC)</th><th>Operator</th><th>Action</th><th>Alert</th><th>Task</th><th>Details</th></tr>
+                {% for time, operator, action, alert, task, details in audit_rows %}
+                <tr><td>{{ time }}</td><td>{{ operator }}</td><td>{{ action|capitalize }}</td>
+                    <td>{{ alert or '' }}</td><td>{{ task or '' }}</td><td>{{ details }}</td></tr>
+                {% endfor %}
+            </table></div>
+            {% endif %}
+
 
         {% elif page == "history" %}
 
@@ -1902,6 +2000,9 @@ def create_maintenance_tables(conn):
     """)
 
 
+    migrate_maintenance(conn)
+
+
 def maintenance_csrf_token():
     if "maintenance_csrf" not in session:
         session["maintenance_csrf"] = secrets.token_hex(32)
@@ -1912,38 +2013,76 @@ def maintenance_csrf_token():
 # Dashboard authentication
 @app.before_request
 def require_dashboard_login():
-    if request.endpoint in ("dashboard_login", "dashboard_logout"):
+    if request.endpoint in ("dashboard_login", "dashboard_register", "health"):
         return None
-    if not session.get("authenticated"):
+    if not session.get("operator"):
+        if request.path.startswith("/api/"):
+            return jsonify(error="Dashboard sign-in required."), 401
         return redirect(url_for("dashboard_login"))
     return None
 
 
 @app.route("/login", methods=["GET", "POST"])
 def dashboard_login():
-    if session.get("authenticated"):
+    return dashboard_auth_form()
+
+
+@app.route("/register", methods=["GET", "POST"])
+def dashboard_register():
+    return dashboard_auth_form(registering=True)
+
+
+def dashboard_auth_form(registering=False):
+    if session.get("operator"):
         return redirect(url_for("dashboard"))
 
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        has_users = bool(conn.execute("SELECT 1 FROM dashboard_users LIMIT 1").fetchone())
+
+    if registering and has_users:
+        return redirect(url_for("dashboard_login"), code=303)
+
     error = None
-
+    status = 200
+    username = ""
+    csrf = session.setdefault("auth_csrf", secrets.token_urlsafe(32))
     if request.method == "POST":
-        expected_user = os.environ.get("DASHBOARD_USERNAME", "")
-        expected_password = os.environ.get("DASHBOARD_PASSWORD", "")
-
-        supplied_user = request.form.get("username", "")
-        supplied_password = request.form.get("password", "")
-
-        if (
-            expected_user
-            and expected_password
-            and hmac.compare_digest(supplied_user, expected_user)
-            and hmac.compare_digest(supplied_password, expected_password)
-        ):
-            session.clear()
-            session["authenticated"] = True
-            return redirect(url_for("dashboard"))
-
-        error = "Invalid username or password."
+        if not authenticate_form(session, request.form.get("csrf_token", "")):
+            abort(400, "The form expired. Reload the page and try again.")
+        username = request.form.get("username", "").strip()
+        password = request.form.get("password", "")
+        if registering:
+            if not valid_credentials(username, password):
+                error = "Use a username of 1 to 64 characters and a password of 8 to 128 characters."
+            elif password != request.form.get("confirm_password", ""):
+                error = "The passwords do not match."
+            else:
+                password_hash = generate_password_hash(password)
+                with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+                    created = bootstrap(conn, username, password_hash)
+                if created:
+                    flash("Account created. You can now sign in.")
+                return redirect(url_for("dashboard_login"), code=303)
+        elif not has_users:
+            error = "Create your dashboard account first."
+        else:
+            source = request.remote_addr or "unknown"
+            with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+                conn.execute("BEGIN IMMEDIATE")
+                allowed = reserve_login(conn, source)
+                account = conn.execute("SELECT password_hash, role FROM dashboard_users WHERE username=?",
+                                       (username,)).fetchone()
+            if not allowed:
+                error, status = "Too many sign-in attempts. Try again in a few minutes.", 429
+            elif account and 8 <= len(password) <= 128 and check_password_hash(account[0], password):
+                with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+                    conn.execute("DELETE FROM dashboard_login_attempts WHERE source=?", (source,))
+                session.clear()
+                session["operator"] = username
+                session["role"] = account[1]
+                return redirect(url_for("dashboard"), code=303)
+            else:
+                error = "Invalid username or password."
 
     return render_template_string("""
 <!DOCTYPE html>
@@ -1951,7 +2090,7 @@ def dashboard_login():
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Sign In | Predictive Maintenance</title>
+<title>{{ "Create Account" if registering else "Sign In" }} | Predictive Maintenance</title>
 <style>
 * { box-sizing: border-box; }
 body {
@@ -2270,42 +2409,62 @@ input:focus {
 
     <main class="login-side">
         <div class="login-card">
-            <div class="eyebrow">WELCOME BACK</div>
-            <h2>Sign in</h2>
+            <div class="eyebrow">{{ "GET STARTED" if registering else "WELCOME BACK" }}</div>
+            <h2>{{ "Create account" if registering else "Sign in" }}</h2>
             <p class="subtitle">
-                Access your equipment monitoring dashboard.
+                {% if registering %}Choose a username and password for this dashboard.
+                {% else %}Access your equipment monitoring dashboard.{% endif %}
             </p>
 
             {% if error %}
             <div class="error" role="alert">{{ error }}</div>
             {% endif %}
 
+            {% for message in get_flashed_messages() %}
+            <p class="secure-note" role="status">{{ message }}</p>
+            {% endfor %}
+
             <form method="POST">
+                <input type="hidden" name="csrf_token" value="{{ csrf }}">
                 <label for="username">Username</label>
                 <input id="username" name="username"
                        autocomplete="username"
                        placeholder="Enter your username"
-                       required autofocus>
+                       value="{{ username }}" maxlength="64" required autofocus>
 
                 <label for="password">Password</label>
                 <div class="password-wrap">
                     <input id="password" name="password"
                            type="password"
-                           autocomplete="current-password"
-                           placeholder="Enter your password" required>
+                           autocomplete="{{ 'new-password' if registering else 'current-password' }}"
+                           placeholder="Enter your password" maxlength="128"
+                           {% if registering %}minlength="8"{% endif %} required>
                     <button class="toggle" type="button"
                             onclick="togglePassword()" id="toggleBtn">
                         Show
                     </button>
                 </div>
 
+                {% if registering %}
+                <label for="confirm_password">Confirm password</label>
+                <input id="confirm_password" name="confirm_password" type="password"
+                       autocomplete="new-password" placeholder="Re-enter your password"
+                       minlength="8" maxlength="128" required>
+                {% endif %}
+
                 <button class="submit" type="submit">
-                    Sign in to Dashboard
+                    {{ "Create account" if registering else "Sign in to Dashboard" }}
                 </button>
             </form>
 
             <p class="secure-note">
+                {% if registering %}
+                <a href="{{ url_for('dashboard_login') }}" style="color: inherit;">Back to sign in</a>
+                {% elif can_register %}
+                <a href="{{ url_for('dashboard_register') }}" style="color: inherit;">Create an account</a>
+                {% else %}
                 Authorised personnel access only
+                {% endif %}
             </p>
         </div>
     </main>
@@ -2321,82 +2480,79 @@ function togglePassword() {
 </script>
 </body>
 </html>
-""", error=error)
+""", error=error, username=username, registering=registering, can_register=not has_users, csrf=csrf), status
 
 
 @app.route("/logout", methods=["POST"])
 def dashboard_logout():
+    if not secrets.compare_digest(request.form.get("csrf_token", "").encode(),
+                                  maintenance_csrf_token().encode()):
+        abort(400, "Invalid form token")
     session.clear()
     return redirect(url_for("dashboard_login"))
 
 @app.route("/maintenance/action", methods=["POST"])
 def maintenance_action():
-    if not secrets.compare_digest(request.form.get("csrf_token", ""), maintenance_csrf_token()):
+    if session.get("role") not in ("admin", "operator"):
+        abort(403)
+    if not secrets.compare_digest(request.form.get("csrf_token", "").encode(),
+                                  maintenance_csrf_token().encode()):
         abort(400, "Invalid form token")
 
-    action = request.form.get("action", "")
-    notice = None
-    error = None
-    with sqlite3.connect(DB_PATH) as conn:
-        create_maintenance_tables(conn)
-        if action == "acknowledge":
-            try:
-                alert_id = int(request.form.get("alert_id", ""))
-            except ValueError:
-                abort(400, "Invalid alert ID")
-            operator = request.form.get("operator", "").strip()
-            if not (0 < len(operator) <= 80):
-                error = "Enter a valid operator name."
-            elif not conn.execute("SELECT 1 FROM alerts WHERE id = ?", (alert_id,)).fetchone():
-                error = "Alert not found."
-            else:
-                result = conn.execute("""
-                    INSERT OR IGNORE INTO alert_acknowledgements
-                    (alert_id, operator, acknowledged_at) VALUES (?, ?, ?)
-                """, (alert_id, operator, utc_timestamp()))
-                notice = "Alert acknowledged." if result.rowcount else "Alert was already acknowledged."
-        elif action == "schedule":
-            asset = request.form.get("asset_id", "").strip()
-            engineer = request.form.get("assigned_to", "").strip()
-            priority = request.form.get("priority", "")
-            scheduled = request.form.get("scheduled_for", "").strip()
-            description = request.form.get("description", "").strip()
-            try:
-                datetime.fromisoformat(scheduled)
-                valid_date = True
-            except ValueError:
-                valid_date = False
-            if not (0 < len(asset) <= 100 and 0 < len(engineer) <= 80 and
-                    0 < len(description) <= 1000 and priority in ("HIGH", "MEDIUM", "LOW") and valid_date):
-                error = "Check the maintenance task fields and try again."
-            else:
-                conn.execute("""
-                    INSERT INTO maintenance_tasks
-                    (created_at, asset_id, priority, assigned_to, scheduled_for, description, status)
-                    VALUES (?, ?, ?, ?, ?, ?, 'SCHEDULED')
-                """, (utc_timestamp(), asset, priority, engineer, scheduled, description))
-                notice = "Maintenance task scheduled."
-        elif action == "complete":
-            try:
-                task_id = int(request.form.get("task_id", ""))
-            except ValueError:
-                abort(400, "Invalid task ID")
-            notes = request.form.get("completion_notes", "").strip()
-            if not (0 < len(notes) <= 1000):
-                error = "Enter the work performed."
-            else:
-                result = conn.execute("""
-                    UPDATE maintenance_tasks
-                    SET status = 'COMPLETED', completed_at = ?, completion_notes = ?
-                    WHERE id = ? AND status = 'SCHEDULED'
-                """, (utc_timestamp(), notes, task_id))
-                if result.rowcount:
-                    notice = "Maintenance task marked complete."
-                else:
-                    error = "Task not found or already completed."
-        else:
-            abort(400, "Unknown maintenance action")
-    return redirect(url_for("dashboard", page="maintenance", asset=request.form.get("asset", "all"), notice=notice, error=error), code=303)
+    notice, error = None, None
+    try:
+        with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+            conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("BEGIN IMMEDIATE")
+            notice = apply_action(conn, request.form, session["operator"], utc_timestamp())
+    except ValueError as problem:
+        error = str(problem)
+    return redirect(url_for("dashboard", page="maintenance", asset=request.form.get("asset", "all"),
+                            notice=notice, error=error), code=303)
+
+
+@app.get("/healthz")
+def health():
+    try:
+        with closing(sqlite3.connect(DB_PATH.as_uri() + "?mode=ro", uri=True, timeout=2)) as conn:
+            conn.execute("SELECT id FROM sensor_readings LIMIT 1").fetchone()
+            conn.execute("SELECT username FROM dashboard_users LIMIT 1").fetchone()
+    except sqlite3.Error:
+        return jsonify(status="unavailable"), 503
+    return jsonify(status="ready")
+
+
+@app.get("/api/assets")
+def asset_registry_api():
+    return jsonify(ASSETS)
+
+
+@app.get("/api/maintenance/audit")
+def maintenance_audit_api():
+    with closing(sqlite3.connect(DB_PATH)) as conn:
+        rows = conn.execute("""
+            SELECT timestamp, actor, action, alert_id, task_id, details
+            FROM maintenance_audit ORDER BY id DESC LIMIT 100
+        """).fetchall()
+    return jsonify([dict(timestamp=t, actor=u, action=a, alert_id=i, task_id=j, details=json.loads(d))
+                    for t, u, a, i, j, d in rows])
+
+
+@app.get("/assets/plotly.js")
+def plotly_asset():
+    asset = files("plotly").joinpath("package_data", "plotly.min.js")
+    return send_file(str(asset), mimetype="application/javascript", max_age=86400)
+
+
+@app.get("/api/monitoring")
+def monitoring_api():
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+        return jsonify(monitoring_snapshot(conn, request.args.get("asset")))
+
+
+@app.get("/api/model-performance")
+def model_performance_api():
+    return jsonify(model_evaluations())
 
 
 @app.route("/", methods=["GET", "POST"])
@@ -2428,7 +2584,7 @@ def dashboard():
         ),
         "prediction": (
             "Machine Failure Prediction",
-            "Estimate machine failure risk using the trained Random Forest model."
+            "Classify operating conditions and review held-out model evaluation."
         ),
         "maintenance": ("Maintenance Management", "Acknowledge alerts and manage maintenance work."),
         "notifications": ("Maintenance Notifications", "View recorded alerts in a conversation-style feed."),
@@ -2474,39 +2630,8 @@ def dashboard():
             if not (0 <= wear <= 300):
                 raise ValueError("Tool wear must be between 0 and 300 minutes.")
 
-            features = [
-                air,
-                process,
-                speed,
-                torque,
-                wear,
-                1 if machine_type == "L" else 0,
-                1 if machine_type == "M" else 0,
-                1 if machine_type == "H" else 0,
-                process - air,
-                torque * speed / 1000
-            ]
-
-            verify_ai4i_model(MODEL_PATH)
-
-            with open(MODEL_PATH, "rb") as model_file:
-                model = pickle.load(model_file)
-
-            votes = 0
-
-            for tree in model["trees"]:
-                node = tree
-
-                while node["feature"] is not None:
-                    if features[node["feature"]] <= node["threshold"]:
-                        node = node["left"]
-                    else:
-                        node = node["right"]
-
-                votes += int(node["prediction"])
-
-            failure_score = votes / len(model["trees"])
-            decision_threshold = round(float(model["threshold"]), 2)
+            features = operating_features(air, process, speed, torque, wear, machine_type)
+            failure_score, decision_threshold = score_ai4i(load_ai4i_model(), features)
             predicted_class = int(failure_score >= decision_threshold)
 
             prediction_result = {
@@ -2517,7 +2642,7 @@ def dashboard():
         except FileNotFoundError:
             prediction_error = (
                 "The trained model file was not found. Check that "
-                "models/ai4i_random_forest.pkl exists."
+                "the configured AI4I model exists."
             )
         except (ValueError, KeyError, ZeroDivisionError) as error:
             prediction_error = str(error) or "Unable to calculate a prediction."
@@ -2529,6 +2654,7 @@ def dashboard():
 
     maintenance_alerts = []
     maintenance_tasks = []
+    audit_rows = []
     m_severity = request.args.get("m_severity", "all")
     if m_severity not in ("all", "HIGH", "MEDIUM", "LOW"):
         m_severity = "all"
@@ -2547,7 +2673,7 @@ def dashboard():
     maintenance_error = request.args.get("error", "")[:150]
     csrf_token = maintenance_csrf_token() if page == "maintenance" else None
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
 
         cursor = conn.cursor()
         available_assets = [row[0] for row in cursor.execute("""
@@ -2563,6 +2689,7 @@ def dashboard():
             selected_asset = "all"
         asset_condition = " AND asset_id = ?" if selected_asset != "all" else ""
         asset_parameters = [selected_asset] if selected_asset != "all" else []
+        fleet = monitoring_snapshot(conn, selected_asset if selected_asset != "all" else None) if page == "overview" else None
         if page == "maintenance":
             create_maintenance_tables(conn)
             where = []
@@ -2596,9 +2723,17 @@ def dashboard():
             m_end = offset + len(maintenance_alerts)
             maintenance_tasks = cursor.execute("""
                 SELECT id, created_at, asset_id, priority, assigned_to, scheduled_for,
-                       description, status, completed_at, completion_notes
-                FROM maintenance_tasks ORDER BY id DESC LIMIT 100
-            """).fetchall()
+                       description, status, completed_at, completion_notes, alert_id
+                FROM maintenance_tasks
+                WHERE (? = 'all' OR asset_id = ?) ORDER BY id DESC LIMIT 100
+            """, (selected_asset, selected_asset)).fetchall()
+            audit_rows = cursor.execute("""
+                SELECT h.timestamp, h.actor, h.action, h.alert_id, h.task_id, h.details
+                FROM maintenance_audit h
+                LEFT JOIN alerts a ON a.id=h.alert_id
+                LEFT JOIN maintenance_tasks t ON t.id=h.task_id
+                WHERE (? = 'all' OR COALESCE(a.asset_id, t.asset_id) = ?) ORDER BY h.id DESC LIMIT 100
+            """, (selected_asset, selected_asset)).fetchall()
 
         def parse_units(raw):
             try:
@@ -2668,58 +2803,31 @@ def dashboard():
         if graph_readings:
 
             latest = {
-                "temperature": round(graph_readings[0][1], 2),
-                "vibration": round(graph_readings[0][2], 2),
-                "humidity": round(graph_readings[0][3], 2),
-                "pressure": round(graph_readings[0][4], 2),
-                "current": round(graph_readings[0][5], 2)
+                "temperature": (round(graph_readings[0][1], 2) if graph_readings[0][1] is not None else "Unavailable"),
+                "vibration": (round(graph_readings[0][2], 2) if graph_readings[0][2] is not None else "Unavailable"),
+                "humidity": (round(graph_readings[0][3], 2) if graph_readings[0][3] is not None else "Unavailable"),
+                "pressure": (round(graph_readings[0][4], 2) if graph_readings[0][4] is not None else "Unavailable"),
+                "current": (round(graph_readings[0][5], 2) if graph_readings[0][5] is not None else "Unavailable")
             }
 
-        # Current status uses the latest reading, not historical alert totals.
-        # Thresholds below are demonstration limits for the simulated source.
+        selected_machine = next(
+            (machine for machine in fleet["machines"] if machine["asset_id"] == latest_asset), None
+        ) if fleet else None
         machine_status = "NO RECENT DATA"
         machine_status_detail = "No recent sensor reading is available."
-        if graph_readings:
-            try:
-                raw_time = graph_readings[0][0]
-                reading_time = datetime.fromisoformat(str(raw_time).replace("Z", "+00:00"))
-                if reading_time.tzinfo is None:
-                    reading_time = reading_time.replace(tzinfo=timezone.utc)
-                age = datetime.now(timezone.utc) - reading_time.astimezone(timezone.utc)
-                if timedelta(0) <= age <= timedelta(minutes=2):
-                    if latest_source != "simulated_sensor":
-                        machine_status_detail = (
-                            "Recent readings received. Current status thresholds "
-                            "are defined only for the simulated sensor source."
-                        )
-                    else:
-                        abnormal = []
-                        if latest["temperature"] > 50:
-                            abnormal.append("elevated temperature")
-                        if latest["vibration"] > 8:
-                            abnormal.append("elevated vibration")
-                        prior = graph_readings[1:11]
-                        if len(prior) >= 5:
-                            humidity_mean = sum(float(r[3]) for r in prior) / len(prior)
-                            if latest["humidity"] > humidity_mean + 15:
-                                abnormal.append("humidity deviation")
-                        if abnormal:
-                            machine_status = "WARNING"
-                            machine_status_detail = (
-                                "Latest readings indicate " + ", ".join(abnormal) +
-                                ". Inspect the equipment and review maintenance alerts."
-                            )
-                        else:
-                            machine_status = "NORMAL"
-                            machine_status_detail = (
-                                "No anomaly detected by the dashboard's current-reading "
-                                "checks. This is not a guarantee of equipment health."
-                            )
-                else:
-                    machine_status_detail = "Latest reading is older than two minutes or has an invalid future timestamp."
-            except (ValueError, TypeError, OverflowError):
-                machine_status_detail = "Latest reading timestamp could not be validated."
-
+        if selected_machine:
+            status = selected_machine["status"]
+            machine_status = {"healthy": "NORMAL", "attention": "WARNING",
+                              "critical": "CRITICAL", "offline": "NO RECENT DATA",
+                              "unrated": "LIVE REPLAY"}[status]
+            reasons = [event["explanation"] for event in selected_machine["anomalies"]]
+            if selected_machine["forecast"] and selected_machine["forecast"]["warning"]:
+                reasons.append("The live model recommends a maintenance inspection.")
+            machine_status_detail = " ".join(reasons) or {
+                "healthy": "Recent readings are within the simulated operating limits.",
+                "offline": "The latest reading is outside the two-minute monitoring window.",
+                "unrated": "This replay source has its own anomaly detection rules.",
+            }.get(status, "")
         chronological = list(reversed(graph_readings))
 
         timestamps = [
@@ -2785,7 +2893,8 @@ def dashboard():
 
         alert_query = """
             SELECT timestamp, sensor, reading, z_score,
-                   severity, recommendation, unit, asset_id, source
+                   severity, recommendation, unit, asset_id, source, category, explanation,
+                   EXISTS (SELECT 1 FROM alert_acknowledgements ack WHERE ack.alert_id = alerts.id)
             FROM alerts
             WHERE 1 = 1
         """
@@ -2837,6 +2946,19 @@ def dashboard():
         alerts_start = alerts_offset + 1 if alerts_total else 0
         alerts_end = min(alerts_offset + len(alerts), alerts_total)
 
+
+        anomaly_events = []
+        if page == "alerts":
+            anomaly_events = cursor.execute("""
+                SELECT r.timestamp, r.asset_id, a.sensor, a.severity, a.category, a.explanation
+                FROM anomaly_events a JOIN sensor_readings r ON r.id = a.reading_id
+                WHERE 1 = 1
+            """ + asset_condition
+                + (" AND a.sensor = ?" if selected_sensor != "all" else "")
+                + (" AND a.severity = ?" if selected_severity != "all" else "")
+                + " ORDER BY a.reading_id DESC, a.sensor DESC LIMIT 12",
+                count_parameters
+            ).fetchall()
 
         # AI4I replay prediction summary and paginated history.
         prediction_limit = request.args.get("prediction_limit", "100")
@@ -3025,7 +3147,7 @@ def dashboard():
         n_sensor = "all"
 
     if DB_PATH.exists():
-        with sqlite3.connect(DB_PATH) as notification_conn:
+        with closing(sqlite3.connect(DB_PATH)) as notification_conn, notification_conn:
             latest_notification_id = notification_conn.execute(
                 "SELECT COALESCE(MAX(id), 0) FROM alerts"
             ).fetchone()[0]
@@ -3084,11 +3206,16 @@ def dashboard():
         n_severity=n_severity,
         n_sensor=n_sensor,
         page=page,
+        fleet=fleet,
+        evaluations=model_evaluations() if page == "prediction" else None,
         pages=PAGES,
         available_assets=available_assets,
         selected_asset=selected_asset,
         maintenance_alerts=maintenance_alerts,
         maintenance_tasks=maintenance_tasks,
+        audit_rows=audit_rows,
+        logout_csrf=maintenance_csrf_token(),
+        can_manage=session.get("role") in ("admin", "operator"),
         m_severity=m_severity,
         m_status=m_status,
         m_limit=m_limit,
@@ -3117,6 +3244,7 @@ def dashboard():
         alert_counts=alert_counts,
         readings=readings,
         alerts=alerts,
+        anomaly_events=anomaly_events,
         history_limit=history_limit,
         history_page_size=history_page_size,
         readings_page=readings_page,
@@ -3152,4 +3280,12 @@ def dashboard():
 
 
 if __name__ == "__main__":
-    app.run(host="0.0.0.0" if os.getenv("DOCKER_ENV") == "1" else "127.0.0.1", port=5000, debug=False, use_reloader=False)
+    create_database()
+    with closing(sqlite3.connect(DB_PATH)) as connection, connection:
+        create_maintenance_tables(connection)
+        init_accounts(connection)
+    certificate = os.getenv("DASHBOARD_TLS_CERT")
+    key = os.getenv("DASHBOARD_TLS_KEY")
+    if bool(certificate) != bool(key):
+        raise RuntimeError("Configure both DASHBOARD_TLS_CERT and DASHBOARD_TLS_KEY.")
+    app.run(ssl_context=(certificate, key) if certificate else None, host="0.0.0.0" if os.getenv("DOCKER_ENV") == "1" else "127.0.0.1", port=int(os.getenv("DASHBOARD_PORT", "5000")), debug=False, use_reloader=False, load_dotenv=False)

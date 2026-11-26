@@ -1,6 +1,7 @@
 import argparse
 import csv
 import json
+import os
 import time
 from pathlib import Path
 
@@ -12,12 +13,10 @@ except ImportError:
     from message_contract import AI4I_UNITS, build_metadata, new_id
 
 try:
-    from .mqtt_security import configure_mqtt_auth
+    from .mqtt_security import connect_configured
 except ImportError:
-    from mqtt_security import configure_mqtt_auth
+    from mqtt_security import connect_configured
 
-BROKER = "localhost"
-PORT = 8883
 TOPIC = "factory/ai4i/replay"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -111,8 +110,7 @@ def main():
     client = mqtt.Client(callback_api_version=mqtt.CallbackAPIVersion.VERSION2)
 
     try:
-        configure_mqtt_auth(client, "publisher")
-        client.connect(BROKER, PORT, 60)
+        connect_configured(client, "publisher")
         client.loop_start()
 
         print("AI4I MQTT Replay Publisher Started")
@@ -144,7 +142,9 @@ def main():
 
                 message = create_message(row, run_id)
                 result = client.publish(TOPIC, json.dumps(message), qos=1)
-                result.wait_for_publish()
+                result.wait_for_publish(timeout=10)
+                if not result.is_published():
+                    raise TimeoutError("MQTT broker did not acknowledge the replay event.")
 
                 published += 1
                 actual_failures += message["actual_failure"]
@@ -167,7 +167,7 @@ def main():
     except KeyboardInterrupt:
         print("\nReplay interrupted by user.")
     except Exception as error:
-        print("\nPublisher error:", error)
+        raise RuntimeError("AI4I replay stopped unexpectedly") from error
     finally:
         client.loop_stop()
         client.disconnect()

@@ -11,4 +11,4 @@ COPY . .
 
 EXPOSE 5000
 
-CMD ["python", "dashboard/app.py"]
+CMD ["python", "-m", "dashboard.app"]

@@ -33,7 +33,7 @@ The application also supports Docker-based deployment through four interconnecte
 
 - Real-time monitoring of five industrial sensor parameters.
 - Hybrid anomaly detection using thresholds, historical comparisons and sustained-trend analysis.
-- Machine-failure classification using a custom Random Forest model.
+- AI4I failure classification and short-horizon forecasts from live simulated sensor readings.
 - Multi-machine monitoring and asset identification.
 - Maintenance alerts with severity levels and recommendations.
 - Maintenance scheduling, acknowledgement and status tracking.
@@ -100,7 +100,7 @@ The application also supports Docker-based deployment through four interconnecte
                    Dashboard Results
 ```
 
-The AI4I failure-classification workflow is separate from the live five-sensor anomaly-detection workflow.
+AI4I classifies concurrent failures from its operating inputs. The live five-sensor stream feeds a hybrid anomaly detector and a separately trained degradation forecast.
 
 ## 4. Technologies Used
 
@@ -113,6 +113,7 @@ The AI4I failure-classification workflow is separate from the live five-sensor a
 | Paho-MQTT | MQTT client implementation |
 | SQLite | Persistent data storage |
 | NumPy | Numerical processing and machine learning |
+| Plotly | Locally served dashboard charts |
 | HTML, CSS, JavaScript | Dashboard interface |
 | Random Forest | Machine-failure classification |
 | Docker | Application containerisation |
@@ -120,7 +121,7 @@ The AI4I failure-classification workflow is separate from the live five-sensor a
 | TLS | Secure MQTT communication |
 | Git and GitHub | Version control |
 
-The custom Random Forest implementation does not require scikit-learn at runtime.
+Both production models train and run with NumPy. Plotly supplies the local browser chart bundle.
 
 ## 5. Sensor Monitoring
 
@@ -132,7 +133,7 @@ The custom Random Forest implementation does not require scikit-learn at runtime
 | Pressure | 2-6 | bar |
 | Electrical Current | 5-20 | A |
 
-The sensor publisher generates normal operating readings and intentionally introduces abnormal conditions to demonstrate equipment monitoring.
+The publisher sends five readings for each of three machines every two seconds. Their load cycles affect temperature, current, pressure and vibration. Staggered scenarios include spikes, gradual heating, humidity drift in both directions, concurrent faults and progressive degradation.
 
 ### Simulated Fault Conditions
 
@@ -226,6 +227,8 @@ The application has been successfully containerised and tested locally using Doc
 | dashboard | Flask monitoring application |
 
 The publisher, consumer and dashboard share persistent project data through Docker bind mounts.
+
+Compose binds the dashboard and MQTT host ports to localhost. Set DASHBOARD_HOST_PORT and MQTT_HOST_PORT to run alongside native services. Set IOT_DATA_DIR to use a separate writable data directory. Include data/ai4i2020.csv in that directory if you plan to replay AI4I records. MQTT_SECURITY_DIR identifies the Windows or Linux directory containing your certificates, password file and ACL.
 
 ### Deployment Verification
 
@@ -334,13 +337,11 @@ In Windows CMD, enter:
 ```cmd
 set /p MQTT_PUBLISHER_PASSWORD=Enter MQTT publisher password:
 set /p MQTT_CONSUMER_PASSWORD=Enter MQTT consumer password:
-set /p DASHBOARD_USERNAME=Enter dashboard username:
-set /p DASHBOARD_PASSWORD=Enter dashboard password:
 ```
 
 The MQTT passwords must match the accounts created in the Mosquitto password file.
 
-The dashboard credentials can be chosen independently.
+Create the dashboard account in the browser after startup.
 
 These credentials are local configuration values and must not be committed to GitHub.
 
@@ -383,7 +384,7 @@ Open the following address in a web browser:
 
 http://localhost:5000
 
-Sign in using the dashboard credentials configured earlier.
+On the first visit, click **Create an account**, choose a username and password, then sign in. The account persists in SQLite and setup closes once it is created.
 
 Navigate to Live Sensors, Reading History and Maintenance Alerts to observe incoming sensor data.
 
@@ -476,10 +477,10 @@ Keep this window running.
 
 Open CMD window 3 in the same project folder:
 
+Open a fresh CMD window and start the dashboard:
+
 ```cmd
 venv\Scripts\activate
-set "DASHBOARD_USERNAME=admin"
-set /p DASHBOARD_PASSWORD=Enter dashboard password:
 python -m dashboard.app
 ```
 
@@ -487,9 +488,11 @@ Open:
 
 http://localhost:5000
 
-Sign in using the configured dashboard credentials.
+On the first visit, click **Create an account**, choose a username and password, then sign in. The account persists in SQLite and setup closes once it is created.
 
-The broker, consumer and publisher must remain running to generate new live readings.
+The broker, consumer and publisher must remain running to generate new live readings. Monitoring pages reload every five seconds. For a non-default native broker, set MQTT_HOST and MQTT_PORT in both MQTT processes. MQTT_CERT_FILE selects the trust certificate, IOT_DB_PATH selects the shared database for the consumer and dashboard, and IOT_FAULT_LOG_DIR redirects simulation fault CSVs.
+
+Authenticated requests to /api/monitoring return each machine's latest five readings, UTC timestamp, status, anomalies and forecast. Pass ?asset=SIM-MOTOR-001 to filter. /api/model-performance returns the two model evaluation reports.
 
 ### 10.7 Optional AI4I Replay
 
@@ -518,87 +521,62 @@ Dataset provenance and redistribution information are provided in `DATASET_ATTRI
 
 The datasets support evaluation of different aspects of the predictive maintenance system.
 
-## 12. Machine Learning Model
+## 12. Machine Learning and Evaluation
 
-The AI4I failure-classification model uses a custom Python and NumPy Random Forest implementation.
+| Evaluation | Accuracy | Precision | Recall | F1 |
+|---|---:|---:|---:|---:|
+| [AI4I failure classification](results/ai4i_improved_metrics.json) | 99.20% | 100.00% | 76.47% | 86.67% |
+| [Simulator anomaly detection](results/simulator_grouped_metrics.json) | 82.12% | 90.75% | 66.85% | 76.99% |
+| [Live simulator breakdown forecast](results/live_maintenance_metrics.json) | 99.20% | 94.66% | 91.85% | 93.23% |
+| [SKAB recorded anomaly detection](results/skab_grouped_metrics.json) | 55.34% | 43.86% | 71.46% | 54.36% |
 
-### Model Configuration
+Each row measures a different task on its own test set. Recall is the share of actual positive cases detected, so report it separately for each task.
 
-| Parameter | Value |
-|---|---:|
-| Total dataset records | 10,000 |
-| Training records | 6,999 |
-| Validation records | 1,500 |
-| Testing records | 1,501 |
-| Number of trees | 25 |
-| Maximum tree depth | 8 |
-| Classification threshold | 0.76 |
+- **AI4I failure classification** detected 39 of 51 failures with zero false positives. It missed 12 failures. An always-normal classifier already achieves 96.60% accuracy on this imbalanced test set.
+- **Simulator anomaly detection** detected all 534 labeled episodes at least once. Its 66.85% recall measures individual readings, including 890 missed anomalous readings.
+- **Live simulator breakdown forecasting** warned before all 45 test breakdowns, with a median lead of six samples (about 12 seconds). These results use simulated equipment.
+- **SKAB recorded anomaly detection** detected 17 of 18 episodes. Its 43.86% precision indicates that most flagged readings were false positives. The final groups were separate from tuning in this evaluation and had been examined in earlier project experiments.
 
-The model evaluates operating conditions using machine parameters and engineered features.
+### AI4I comparison
 
-### Held-Out Test Results
-
-| Evaluation Metric | Result |
-|---|---:|
-| Accuracy | 97.80% |
-| Precision | 70.45% |
-| Recall | 60.78% |
-| F1-score | 65.26% |
-
-### Confusion Matrix
-
-| Actual / Predicted | Normal | Failure |
+| AI4I held-out metric | Original forest | Improved forest |
 |---|---:|---:|
-| Normal | 1,437 | 13 |
-| Failure | 20 | 31 |
+| Accuracy | 97.80% | 99.20% |
+| Precision | 70.45% | 100.00% |
+| Recall | 60.78% | 76.47% |
+| F1 | 65.26% | 86.67% |
+| ROC AUC | 96.54% | 97.08% |
+| PR AUC (average precision) | 69.77% | 87.76% |
 
-The dashboard displays the Random Forest voting score as an indication of failure risk. This score is not a calibrated failure probability.
+The improved classifier uses 64 NumPy CART trees, finer split search, leaf scores, and torque times tool wear. The original and improved models use the same stratified 6,999 / 1,500 / 1,501 split. A decision tree, a forest and a weighted forest were compared on validation F1, recall and average precision. On the test split, the improved model produced 1,450 true negatives, zero false positives, 12 false negatives and 39 true positives. A separately trained UDI-ordered experiment achieved 74.07% F1 on the final 1,500 rows.
+
+The live model uses weighted logistic regression on the trailing ten readings to forecast a simulated breakdown within six samples, approximately 12 seconds. It uses recent means, changes between five-reading windows and recent spread for temperature, vibration, pressure and current. On 60 independently seeded test episodes, it reached 99.20% accuracy, 94.66% precision, 91.85% recall and 93.23% F1. It warned before all 45 simulated breakdowns, with a median lead of six samples.
+
+Reproduce the evaluations from the repository root:
+
+```cmd
+python -m detection.train_ai4i_improved
+python -m detection.train_live_maintenance
+python -m detection.evaluate_live_anomalies
+```
+
+The default classifier is models/ai4i_improved.pkl. Its expected SHA-256 is recorded in messaging/model_security.py. If a local retraining run produces a different hash, set AI4I_IMPROVED_SHA256 to the hash you calculated for your trusted output before starting the dashboard and consumer. The dashboard reads the evaluation JSON generated by each trainer.
 
 ## 13. Hybrid Anomaly Detection Evaluation
 
-The hybrid anomaly detector was evaluated against a rolling Z-score baseline using a fixed historical simulated-sensor test run containing 418 readings.
+The rules detect temperature excursions, irregular vibration, pressure deviation, current surges and humidity drift. Each detected anomaly stores its category, severity and reason. Repeated alerts for the same machine, sensor and severity observe a 30-second cooldown. Acknowledgement is tracked separately.
 
-### Performance Comparison
+On an earlier 6,000-reading simulator benchmark, the rules achieved 88.23% precision, 49.26% recall and 63.22% F1. They detected every isolated temperature spike, pressure drop, vibration burst and current surge in those episodes. Sustained drift and degradation have lower reading-level recall. The forecast has its own labels and evaluation. See results/live_anomaly_metrics.json for counts.
 
-| Metric | Z-Score Baseline | Hybrid Detector |
-|---|---:|---:|
-| Precision | 45.98% | 87.05% |
-| Recall | 68.18% | 68.75% |
-| F1-score | 54.92% | 76.83% |
-| False Positives | 141 | 18 |
-
-### Key Improvements
-
-- Precision increased by 41.07 percentage points.
-- F1-score increased by 21.91 percentage points.
-- False positives decreased by approximately 87.23%.
-- Recall improved while false alerts were substantially reduced.
-- Targeted tests for gradual temperature increases and sustained humidity drift passed.
-
-These improvements demonstrate more reliable anomaly identification on the evaluated simulated-sensor run.
-
-Fixed run IDs support reproducibility of the comparison. The historical run is not independently established as an untouched holdout dataset.
-
-### Evaluation Commands
-
-```cmd
-python -m detection.evaluate_hybrid
-python detection\evaluate_skab_final.py
-```
-
-Saved evaluation reports include:
-
-```text
-results/hybrid_evaluation.json
-results/skab_final_evaluation.json
-```
+With a trailing cross-sensor degradation rule, simulator F1 reached 76.99% versus 64.46% for the prior hybrid on the same new 6,000-reading test. The earlier hybrid and SKAB reports remain in results/ for historical comparison. They use different streams and protocols.
 
 ## 14. Database and Data Management
 
 SQLite provides persistent storage for:
 
 - Sensor readings.
-- Detected anomalies.
+- Anomaly events with triggered rules and severity.
+- Live maintenance forecasts with scores, thresholds and horizons.
 - Maintenance alerts.
 - Machine-failure predictions.
 - Alert acknowledgements.
@@ -642,7 +620,7 @@ run_tests.bat
 Alternatively:
 
 ```cmd
-python -m unittest detection.test_consumer_integration detection.test_ai4i_integration detection.test_detector -q
+python -m unittest detection.test_consumer_integration detection.test_ai4i_integration detection.test_detector detection.test_live_system detection.test_review_workflow -q
 ```
 
 A clean-clone verification conducted on 22 November 2026 reported:
@@ -652,7 +630,7 @@ A clean-clone verification conducted on 22 November 2026 reported:
 - Successful dashboard sign-in.
 - Successful AI4I replay of 100 records.
 
-Additional local Docker verification conducted on 25 November 2026 confirmed successful container execution and live monitoring functionality using the manually configured security environment.
+The 26 November update was verified against a native TLS broker and Chrome. The same four-service stack was also rebuilt and tested in Docker Desktop on Linux ARM64. See PROJECT_AUDIT.md for browser, database, TLS and model evidence.
 
 ## 17. Project Structure
 
@@ -708,12 +686,62 @@ IoT_Predictive_Maintenance/
 | Port 8883 is unavailable | Check for another running MQTT broker |
 | MQTT authentication fails | Verify account passwords and broker password file |
 | TLS connection fails | Verify certificate validity and mounted certificate paths |
-| Dashboard login fails | Check dashboard environment variables |
+| First dashboard sign-in | Create the account from the link on the sign-in page |
 | Sensor readings are not changing | Verify publisher, consumer and broker status |
 | Dashboard has no history | Generate readings after starting a fresh installation |
 | Replay predictions are missing | Run the AI4I replay with the consumer active |
 
 Use HTTP rather than HTTPS when opening the local dashboard.
+
+## Consolidated review and operating commands
+
+See [the consolidated tracker](CONSOLIDATED_REVIEW_COMPLETION_TRACKER.md) and [the final report](FINAL_CONSOLIDATED_PROJECT_COMPLETION_REPORT.md) for the review mapping, measured results and acceptance evidence. The reference Docker deployment uses an isolated Compose project so it can run alongside existing native installations.
+
+### Dashboard accounts and roles
+
+The first account created from the sign-in page is the administrator. An administrator with host or Docker access provisions individually named operator and viewer accounts. Operators can acknowledge alerts and create, reassign and complete maintenance tasks. Viewers can read the dashboard and histories. Each new maintenance task requires an alert ID and derives its asset and default recommendation from that alert. The maintenance audit records the authenticated actor and changes.
+
+```powershell
+docker compose exec dashboard python -m dashboard.accounts engineer_a operator
+docker compose exec dashboard python -m dashboard.accounts observer viewer
+```
+
+Native deployments use the same module and `IOT_DB_PATH` as the running dashboard. Set `DASHBOARD_TLS_CERT` and `DASHBOARD_TLS_KEY` to run the native application over HTTPS. Use a trusted certificate for the hostname. For a reverse proxy over HTTPS, set `DASHBOARD_SECURE_COOKIE=1`. Set `DASHBOARD_SECRET_KEY` from a protected, persistent setting in shared deployments. The Compose dashboard publishes to loopback and Flask debugging is disabled.
+
+### Compose health, replay and recovery
+
+```powershell
+docker compose config --quiet
+docker compose up -d --build --wait --wait-timeout 140
+docker compose ps
+docker compose exec publisher python -m messaging.ai4i_replay_publisher --limit 100 --interval 0.02
+docker compose exec publisher python -m sensors.skab_replay --limit 40 --interval 0.02
+```
+
+The default data mount is `./data`. In an isolated data directory, copy `ai4i2020.csv` and the upstream `SKAB-master/data/valve1/` folder there before replay. MQTT clients take `MQTT_HOST`, `MQTT_PORT`, `MQTT_CONNECT_TIMEOUT`, `MQTT_CERT_FILE` and the corresponding role password. `MQTT_CONSUMER_CLIENT_ID` identifies the subscriber session. When running multiple separate consumers against one broker, use unique client IDs. Mosquitto saves subscriber state in the `mqtt-state` named volume. QoS 1 with stable event IDs permits redelivery and application deduplication. Publisher-process exits can lose a pending message held only in memory.
+
+Use `IOT_ASSET_REGISTRY` to supply a JSON object mapping additional asset IDs to objects with `name`, `kind`, and `source` fields. The bundled simulator and SKAB replay entries are reserved. Use an existing producer and configure its exact source and units. In Compose, place a registry file in the data mount and use its container path, for example /app/data/assets.json. The authenticated `/api/assets` endpoint shows the resulting registry.
+
+### Backup and restore
+
+Run an on-demand backup with the same mounted data path as the dashboard. The no-option command performs a backup every 24 hours and retains seven automatic snapshots. Run it as a supervised process, or schedule the one-shot command in your operating system. Keep backup access restricted because the SQLite snapshot includes dashboard account hashes.
+
+```powershell
+docker compose exec dashboard python -m detection.auto_backup --once
+docker compose exec dashboard python -m detection.auto_backup --restore /app/data/backups/<snapshot>.db /app/data/restore-test.db
+```
+
+Replace `<snapshot>` with the filename printed by the backup command. Restore uses an exclusive new path and verifies SQLite integrity. `IOT_DB_PATH` selects the native source database. Backups and restore tests can run while normal ingestion continues.
+
+### Evaluation reports
+
+```powershell
+python -m detection.audit_ai4i_misses
+python -m detection.evaluate_simulator_grouped
+python -m detection.evaluate_skab_grouped
+```
+
+The previous 418-reading simulator result and earlier 6,000-reading benchmark are historical reference results. The new simulator comparison uses whole seed sessions and the SKAB comparison uses separate sequence groups. The SKAB report includes labeled fixture provenance, event results and false alarms normalized to an eight-hour shift. See [dataset terms and attribution](DATASET_ATTRIBUTION.md).
 
 ## 19. Industrial Applications
 
@@ -742,7 +770,7 @@ Potential extensions include:
 
 The IoT-Based Predictive Maintenance System demonstrates an integrated workflow combining secure IoT communication, real-time equipment monitoring, hybrid anomaly detection, machine learning and maintenance management.
 
-The evaluated hybrid detector achieved 87.05% precision and substantially reduced false positives compared with the rolling Z-score baseline. The AI4I Random Forest achieved 97.80% accuracy on its held-out classification test.
+The updated AI4I classifier achieved 86.67% held-out F1. The live model reached 93.23% F1 on independent simulator episodes.
 
 Docker-based deployment provides a structured multi-container architecture for running the application locally.
 

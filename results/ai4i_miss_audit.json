@@ -1,0 +1,332 @@
+{
+  "outcomes": {
+    "always_normal": {
+      "metrics": {
+        "accuracy": 0.966022651565623,
+        "precision": 0,
+        "recall": 0.0,
+        "f1_score": 0,
+        "roc_auc": 0.5,
+        "pr_auc": 0.03397734843437708
+      },
+      "confusion_matrix": {
+        "true_positives": 0,
+        "false_positives": 0,
+        "false_negatives": 51,
+        "true_negatives": 1450
+      }
+    },
+    "original": {
+      "metrics": {
+        "accuracy": 0.978014656895403,
+        "precision": 0.7045454545454546,
+        "recall": 0.6078431372549019,
+        "f1_score": 0.6526315789473683,
+        "roc_auc": 0.9653955375253549,
+        "pr_auc": 0.6977378394595541,
+        "false_negative_rate": 0.3921568627450981
+      },
+      "confusion_matrix": {
+        "true_positives": 31,
+        "false_positives": 13,
+        "false_negatives": 20,
+        "true_negatives": 1437
+      }
+    },
+    "improved": {
+      "metrics": {
+        "accuracy": 0.9920053297801465,
+        "precision": 1.0,
+        "recall": 0.7647058823529411,
+        "f1_score": 0.8666666666666666,
+        "roc_auc": 0.9708384043272482,
+        "pr_auc": 0.8775873444969503,
+        "false_negative_rate": 0.23529411764705888
+      },
+      "confusion_matrix": {
+        "true_positives": 39,
+        "false_positives": 0,
+        "false_negatives": 12,
+        "true_negatives": 1450
+      }
+    }
+  },
+  "missed_records": {
+    "original": [
+      {
+        "udi": 8358,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.08
+      },
+      {
+        "udi": 7885,
+        "product_type": "L",
+        "flags": [
+          "PWF"
+        ],
+        "score": 0.56
+      },
+      {
+        "udi": 7688,
+        "product_type": "M",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.68
+      },
+      {
+        "udi": 9577,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.52
+      },
+      {
+        "udi": 6154,
+        "product_type": "L",
+        "flags": [
+          "OSF"
+        ],
+        "score": 0.6
+      },
+      {
+        "udi": 2672,
+        "product_type": "M",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.6
+      },
+      {
+        "udi": 3530,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.4
+      },
+      {
+        "udi": 2427,
+        "product_type": "M",
+        "flags": [
+          "PWF"
+        ],
+        "score": 0.72
+      },
+      {
+        "udi": 4921,
+        "product_type": "L",
+        "flags": [
+          "PWF"
+        ],
+        "score": 0.72
+      },
+      {
+        "udi": 9614,
+        "product_type": "L",
+        "flags": [
+          "PWF"
+        ],
+        "score": 0.72
+      },
+      {
+        "udi": 6160,
+        "product_type": "L",
+        "flags": [
+          "OSF"
+        ],
+        "score": 0.72
+      },
+      {
+        "udi": 3866,
+        "product_type": "H",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.56
+      },
+      {
+        "udi": 1683,
+        "product_type": "H",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.52
+      },
+      {
+        "udi": 2859,
+        "product_type": "L",
+        "flags": [
+          "OSF"
+        ],
+        "score": 0.6
+      },
+      {
+        "udi": 4470,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.4
+      },
+      {
+        "udi": 4045,
+        "product_type": "M",
+        "flags": [],
+        "score": 0.08
+      },
+      {
+        "udi": 4647,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.2
+      },
+      {
+        "udi": 8507,
+        "product_type": "L",
+        "flags": [],
+        "score": 0.0
+      },
+      {
+        "udi": 6679,
+        "product_type": "M",
+        "flags": [
+          "PWF"
+        ],
+        "score": 0.76
+      },
+      {
+        "udi": 5401,
+        "product_type": "L",
+        "flags": [
+          "OSF"
+        ],
+        "score": 0.2
+      }
+    ],
+    "improved": [
+      {
+        "udi": 8358,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.018229166666666664
+      },
+      {
+        "udi": 7688,
+        "product_type": "M",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.39497252788310444
+      },
+      {
+        "udi": 9577,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.03163109756097561
+      },
+      {
+        "udi": 2672,
+        "product_type": "M",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.034472978547854784
+      },
+      {
+        "udi": 3530,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.023809523809523808
+      },
+      {
+        "udi": 3866,
+        "product_type": "H",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.07421875
+      },
+      {
+        "udi": 5049,
+        "product_type": "H",
+        "flags": [
+          "PWF"
+        ],
+        "score": 0.7786458333333334
+      },
+      {
+        "udi": 1683,
+        "product_type": "H",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.036458333333333336
+      },
+      {
+        "udi": 4470,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.0006188118811881188
+      },
+      {
+        "udi": 4045,
+        "product_type": "M",
+        "flags": [],
+        "score": 0.0
+      },
+      {
+        "udi": 4647,
+        "product_type": "L",
+        "flags": [
+          "TWF"
+        ],
+        "score": 0.041666666666666664
+      },
+      {
+        "udi": 8507,
+        "product_type": "L",
+        "flags": [],
+        "score": 0.0
+      }
+    ]
+  },
+  "original_misses_recovered": [
+    2427,
+    2859,
+    4921,
+    5401,
+    6154,
+    6160,
+    6679,
+    7885,
+    9614
+  ],
+  "missed_by_flag": {
+    "original": {
+      "TWF": 9,
+      "PWF": 5,
+      "OSF": 4,
+      "none": 2
+    },
+    "improved": {
+      "TWF": 9,
+      "PWF": 1,
+      "none": 2
+    }
+  }
+}

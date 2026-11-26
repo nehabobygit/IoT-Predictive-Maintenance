@@ -1,0 +1,46 @@
+{
+  "dataset": "60 synthetic episodes with seeds 300\u2013319",
+  "test_records": 6000,
+  "metrics": {
+    "accuracy": 0.7558333333333334,
+    "precision": 0.882270497547302,
+    "recall": 0.492566510172144,
+    "f1_score": 0.6321867938739643
+  },
+  "confusion_matrix": {
+    "true_positives": 1259,
+    "false_positives": 168,
+    "false_negatives": 1297,
+    "true_negatives": 3276
+  },
+  "fault_sensor_hits": {
+    "current_surge": {
+      "hits": 120,
+      "total": 120
+    },
+    "gradual_rise": {
+      "hits": 229,
+      "total": 420
+    },
+    "irregular_vibration": {
+      "hits": 180,
+      "total": 180
+    },
+    "pressure_drop": {
+      "hits": 60,
+      "total": 60
+    },
+    "progressive_degradation": {
+      "hits": 966,
+      "total": 4464
+    },
+    "sensor_drift": {
+      "hits": 231,
+      "total": 660
+    },
+    "sudden_spike": {
+      "hits": 60,
+      "total": 60
+    }
+  }
+}

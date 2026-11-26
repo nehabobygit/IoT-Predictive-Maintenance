@@ -1,9 +1,10 @@
 import os
 import csv
 import json
-import random
 import time
 from pathlib import Path
+
+from sensors.machine_simulator import INTERVAL_SECONDS, PROFILES, MachineSimulator
 
 import paho.mqtt.client as mqtt
 
@@ -21,17 +22,16 @@ except ImportError:
     )
 
 try:
-    from .mqtt_security import configure_mqtt_auth
+    from .mqtt_security import connect_configured
 except ImportError:
-    from mqtt_security import configure_mqtt_auth
+    from mqtt_security import connect_configured
 
-BROKER = os.getenv("MQTT_HOST", "localhost")
-PORT = 8883
 TOPIC = "factory/sensors"
 
 BASE_DIR = Path(__file__).resolve().parent.parent
-FAULT_LOG = BASE_DIR / "data" / "fault_log.csv"
-FAULT_LOG_V2 = BASE_DIR / "data" / "fault_log_v2.csv"
+LOG_DIR = Path(os.getenv("IOT_FAULT_LOG_DIR", BASE_DIR / "data"))
+FAULT_LOG = LOG_DIR / "fault_log.csv"
+FAULT_LOG_V2 = LOG_DIR / "fault_log_v2.csv"
 
 ASSET_ID = "SIM-MOTOR-001"
 SOURCE = "simulated_sensor"
@@ -65,9 +65,7 @@ FAULT_LOG_V2_FIELDS = [
     "unit",
 ]
 
-cycle = 0
-gradual_rise = 0
-humidity_drift = 0
+default_simulators = {asset: MachineSimulator(asset) for asset in PROFILES}
 
 
 def append_fault_logs(metadata, faults):
@@ -121,129 +119,14 @@ def append_fault_logs(metadata, faults):
             })
 
 
-def generate_readings(run_id):
-    global cycle, gradual_rise, humidity_drift
-
-    cycle += 1
-
-    readings = {
-        "temperature": round(random.uniform(35, 45), 2),
-        "vibration": round(random.uniform(1, 5), 2),
-        "humidity": round(random.uniform(30, 70), 2),
-        "pressure": round(random.uniform(2, 6), 2),
-        "current": round(random.uniform(5, 20), 2),
-    }
-
-    faults = []
-
-    # 1. Sudden temperature spike
-    if cycle % 40 == 5:
-        normal = readings["temperature"]
-
-        readings["temperature"] = round(
-            normal + 25,
-            2,
-        )
-
-        faults.append((
-            "temperature",
-            "sudden_spike",
-            normal,
-            readings["temperature"],
-        ))
-
-    # 2. Gradual temperature rise
-    if cycle % 40 in range(10, 15):
-        gradual_rise += 1
-
-        normal = readings["temperature"]
-
-        readings["temperature"] = round(
-            normal + gradual_rise * 4,
-            2,
-        )
-
-        faults.append((
-            "temperature",
-            "gradual_rise",
-            normal,
-            readings["temperature"],
-        ))
-
-    elif cycle % 40 == 15:
-        gradual_rise = 0
-
-    # 3. Irregular vibration
-    if cycle % 40 == 20:
-        normal = readings["vibration"]
-
-        readings["vibration"] = round(
-            random.uniform(12, 18),
-            2,
-        )
-
-        faults.append((
-            "vibration",
-            "irregular_vibration",
-            normal,
-            readings["vibration"],
-        ))
-
-    # 4. Slow humidity sensor drift
-    if cycle % 40 in range(25, 35):
-        humidity_drift += 1.5
-
-        normal = readings["humidity"]
-
-        readings["humidity"] = round(
-            min(normal + humidity_drift, 100),
-            2,
-        )
-
-        faults.append((
-            "humidity",
-            "sensor_drift",
-            normal,
-            readings["humidity"],
-        ))
-
-    # 5. Abnormal pressure drop
-    if cycle % 40 == 36:
-        normal = readings["pressure"]
-
-        readings["pressure"] = round(
-            random.uniform(0.4, 1.2),
-            2,
-        )
-
-        faults.append((
-            "pressure",
-            "pressure_drop",
-            normal,
-            readings["pressure"],
-        ))
-
-    # 6. Electrical current surge
-    if cycle % 40 == 38:
-        normal = readings["current"]
-
-        readings["current"] = round(
-            random.uniform(25, 32),
-            2,
-        )
-
-        faults.append((
-            "current",
-            "current_surge",
-            normal,
-            readings["current"],
-        ))
+def generate_readings(run_id, asset_id=ASSET_ID, simulator=None):
+    readings, faults, _ = (simulator or default_simulators[asset_id]).sample()
 
     metadata = build_metadata(
         message_type="sensor_reading",
         source=SOURCE,
         run_id=run_id,
-        asset_id=ASSET_ID,
+        asset_id=asset_id,
         units=SENSOR_UNITS[SOURCE],
         synthetic_fields=SYNTHETIC_FIELDS,
         source_channels=SOURCE_CHANNELS,
@@ -271,50 +154,55 @@ def generate_readings(run_id):
 
 
 def main():
+    ready = Path("/tmp/iot-publisher-ready") if os.getenv("DOCKER_ENV") == "1" else None
+    if ready:
+        ready.unlink(missing_ok=True)
     run_id = new_id()
+    simulators = {
+        asset: MachineSimulator(asset, offset=offset)
+        for asset, offset in zip(PROFILES, (0, 5, 10))
+    }
 
     client = mqtt.Client(
         callback_api_version=mqtt.CallbackAPIVersion.VERSION2
     )
 
     try:
-        configure_mqtt_auth(client, "publisher")
-
-        client.connect(
-            BROKER,
-            PORT,
-            60,
-        )
+        connect_configured(client, "publisher", asynchronous=True)
 
         client.loop_start()
 
         print("Fault Injection Publisher Started")
         print("MQTT topic:", TOPIC)
-        print("Asset ID:", ASSET_ID)
+        print("Assets:", ", ".join(simulators))
         print("Source:", SOURCE)
         print("Run ID:", run_id)
         print("Generating normal and faulty readings...\n")
 
         while True:
-            data = generate_readings(run_id)
-
-            result = client.publish(
-                TOPIC,
-                json.dumps(data),
-                qos=1,
-            )
-
-            result.wait_for_publish()
-
-            print("Published:", json.dumps(data))
-
-            time.sleep(2)
+            for asset, simulator in simulators.items():
+                data = generate_readings(run_id, asset, simulator)
+                while True:
+                    if not client.is_connected():
+                        time.sleep(1)
+                        continue
+                    result = client.publish(TOPIC, json.dumps(data), qos=1)
+                    try:
+                        result.wait_for_publish(timeout=10)
+                    except RuntimeError:
+                        if result.rc != mqtt.MQTT_ERR_NO_CONN:
+                            raise
+                        continue
+                    while not result.is_published():
+                        result.wait_for_publish(timeout=10)
+                    break
+                if ready:
+                    ready.touch()
+                print("Published:", data["asset_id"], data["timestamp"], data["readings"])
+            time.sleep(INTERVAL_SECONDS)
 
     except KeyboardInterrupt:
         print("\nPublisher stopped.")
-
-    except Exception as error:
-        print("Error:", error)
 
     finally:
         client.loop_stop()

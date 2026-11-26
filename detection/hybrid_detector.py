@@ -1,103 +1,86 @@
-
+"""Rule-based detection for the simulated sensor stream."""
 import statistics
+from typing import NamedTuple
 
-SENSORS = [
-    "temperature",
-    "vibration",
-    "humidity",
-    "pressure",
-    "current",
-]
+from detection.detection_engine import SENSORS
 
 
-def detect_hybrid(history, readings):
-    """
-    Detect simulated sensor anomalies.
+PROGRESSIVE_SCALE = .75
 
-    Returns a dictionary mapping sensor names
-    to positive anomaly scores.
-    """
+
+class Anomaly(NamedTuple):
+    category: str
+    score: float
+    explanation: str
+
+
+def locate_progressive_degradation(history, readings, scale):
+    if any(len(history[sensor]) < 7 for sensor in ("temperature", "vibration", "pressure", "current")):
+        return False
+
+    def change(sensor):
+        recent = history[sensor][-2:] + [readings[sensor]]
+        reference = history[sensor][-7:-2]
+        return statistics.mean(recent) - statistics.mean(reference)
+
+    return (change("temperature") >= 1.8*scale and change("vibration") >= .65*scale
+            and change("pressure") <= -.12*scale and change("current") >= .7*scale)
+
+
+def detect_anomalies(history, readings, *, progressive_scale=PROGRESSIVE_SCALE):
     anomalies = {}
+
+    def flag(sensor, category, score, explanation):
+        if sensor not in anomalies or score > anomalies[sensor].score:
+            anomalies[sensor] = Anomaly(category, score, explanation)
 
     temperature = readings["temperature"]
     vibration = readings["vibration"]
     humidity = readings["humidity"]
     pressure = readings["pressure"]
     current = readings["current"]
-
-    # 1. Sudden temperature spikes
     if temperature > 50:
-        anomalies["temperature"] = temperature - 50
-
-    # 2. Irregular vibration
+        flag("temperature", "overheating", temperature - 50, "Temperature exceeds 50 °C.")
     if vibration > 8:
-        anomalies["vibration"] = vibration - 8
-
-    # 3. Temperature increase relative to recent history
-    recent_temperature = history["temperature"][-5:]
-
-    if len(recent_temperature) == 5:
-        mean_temperature = statistics.mean(recent_temperature)
-
-        if temperature > mean_temperature + 7:
-            anomalies["temperature"] = max(
-                anomalies.get("temperature", 0),
-                temperature - mean_temperature - 7,
-            )
-
-    # 4. Gradual temperature rise
-    temperature_series = history["temperature"][-5:] + [temperature]
-
-    if len(temperature_series) == 6:
-        changes = [
-            temperature_series[i + 1] - temperature_series[i]
-            for i in range(5)
-        ]
-
-        if (
-            all(change >= 1.5 for change in changes)
-            and temperature_series[-1] - temperature_series[0] >= 8
-        ):
-            anomalies["temperature"] = max(
-                anomalies.get("temperature", 0),
-                temperature_series[-1] - temperature_series[0] - 8,
-                0.01,
-            )
-
-    # 5. Humidity increase relative to recent history
-    recent_humidity = history["humidity"][-10:]
-
-    if len(recent_humidity) >= 5:
-        mean_humidity = statistics.mean(recent_humidity)
-
-        if humidity > mean_humidity + 15:
-            anomalies["humidity"] = humidity - mean_humidity - 15
-
-    # 6. Sustained humidity drift
-    humidity_series = history["humidity"][-5:] + [humidity]
-
-    if len(humidity_series) == 6:
-        changes = [
-            humidity_series[i + 1] - humidity_series[i]
-            for i in range(5)
-        ]
-
-        if (
-            all(change >= 2 for change in changes)
-            and humidity_series[-1] - humidity_series[0] >= 12
-        ):
-            anomalies["humidity"] = max(
-                anomalies.get("humidity", 0),
-                humidity_series[-1] - humidity_series[0] - 12,
-                0.01,
-            )
-
-    # 7. Abnormal pressure drop
-    if pressure < 1.5:
-        anomalies["pressure"] = 1.5 - pressure
-
-    # 8. Electrical current surge
+        flag("vibration", "irregular_vibration", vibration - 8, "Vibration exceeds 8 mm/s.")
+    if pressure < 1.5 or pressure > 6.5:
+        flag("pressure", "pressure_variation", max(1.5 - pressure, pressure - 6.5),
+             "Pressure is outside the 1.5–6.5 bar operating band.")
     if current > 24:
-        anomalies["current"] = current - 24
+        flag("current", "current_surge", current - 24, "Current exceeds 24 A.")
 
+    for sensor, recent, minimum, delta, category, two_sided in (
+        ("temperature", history["temperature"][-5:], 5, 7, "temperature_rise", False),
+        ("humidity", history["humidity"][-10:], 5, 15, "sensor_drift", True),
+        ("pressure", history["pressure"][-5:], 5, 1.4, "pressure_variation", True),
+    ):
+        if len(recent) < minimum:
+            continue
+        difference = readings[sensor] - statistics.mean(recent)
+        deviation = abs(difference) if two_sided else difference
+        if deviation > delta:
+            flag(sensor, category, deviation - delta,
+                 f"Reading changed by {difference:+.1f} from its recent mean.")
+
+    for sensor, value, step, total, category in (
+        ("temperature", temperature, 1.5, 8, "temperature_rise"),
+        ("humidity", humidity, 1.0, 11, "sensor_drift"),
+    ):
+        series = history[sensor][-5:] + [value]
+        if len(series) < 6:
+            continue
+        direction = -1 if sensor == "humidity" and value < series[0] else 1
+        drift = direction * (value - series[0])
+        if drift >= total and all(direction * (b - a) >= step for a, b in zip(series, series[1:])):
+            flag(sensor, category, max(drift - total, .01),
+                 f"Reading trended consistently by {value - series[0]:+.1f} over five intervals.")
+    if progressive_scale is not None and locate_progressive_degradation(history, readings, progressive_scale):
+        if "vibration" not in anomalies:
+            flag("vibration", "progressive_degradation", 1.0,
+                 "Vibration, temperature and current rose as pressure fell across recent windows.")
     return anomalies
+
+
+def detect_hybrid(history, readings):
+    """Return sensor-to-score mappings for the original evaluation scripts."""
+    return {sensor: finding.score for sensor, finding in detect_anomalies(history, readings, progressive_scale=None).items()}

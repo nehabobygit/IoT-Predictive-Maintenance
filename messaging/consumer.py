@@ -1,3 +1,4 @@
+from contextlib import closing
 
 import json
 import math
@@ -6,7 +7,6 @@ import queue
 import threading
 import urllib.error
 import urllib.request
-import pickle
 import sqlite3
 import sys
 import time
@@ -18,7 +18,7 @@ BASE_DIR = Path(__file__).resolve().parent.parent
 if str(BASE_DIR) not in sys.path:
     sys.path.insert(0, str(BASE_DIR))
 
-from messaging.model_security import verify_ai4i_model
+from messaging.model_security import load_verified_ai4i_model
 
 try:
     from .message_contract import (
@@ -36,6 +36,8 @@ except ImportError:
     )
 
 from detection.train_ai4i_rf import predict_forest
+from detection.train_ai4i_improved import FEATURES, LEGACY_FEATURES, operating_features, physical_features
+from detection.live_maintenance import forecast
 from detection.detection_engine import (
     calculate_z_score,
     classify_severity,
@@ -43,21 +45,21 @@ from detection.detection_engine import (
     Z_THRESHOLD,
     ALERT_COOLDOWN,
 )
-from detection.hybrid_detector import detect_hybrid
+from detection.hybrid_detector import detect_anomalies
 
 try:
-    from .mqtt_security import configure_mqtt_auth
+    from .mqtt_security import connect_configured
 except ImportError:
-    from mqtt_security import configure_mqtt_auth
+    from mqtt_security import connect_configured
 
 
 BROKER = os.getenv("MQTT_HOST", "localhost")
-PORT = 8883
+PORT = int(os.getenv("MQTT_PORT", "8883"))
 TOPIC = "factory/sensors"
 AI4I_TOPIC = "factory/ai4i/replay"
 
-DB_PATH = BASE_DIR / "data" / "sensor_readings.db"
-MODEL_PATH = BASE_DIR / "models" / "ai4i_random_forest.pkl"
+DB_PATH = Path(os.getenv("IOT_DB_PATH", BASE_DIR / "data" / "sensor_readings.db")).resolve()
+MODEL_PATH = Path(os.getenv("AI4I_MODEL_PATH", BASE_DIR / "models" / "ai4i_improved.pkl"))
 
 SENSORS = [
     "temperature",
@@ -69,6 +71,7 @@ SENSORS = [
 
 last_alert_time = {}
 ai4i_model = None
+READY = Path(os.getenv("MQTT_CONSUMER_READY_FILE", "/tmp/iot-consumer-ready")) if os.getenv("DOCKER_ENV") == "1" else None
 
 # Optional external HIGH-severity alerts. No webhook means no network calls.
 WEBHOOK_URL = os.environ.get("MAINTENANCE_WEBHOOK_URL", "").strip()
@@ -111,7 +114,7 @@ def notify_committed_high_alerts(event_id):
     """Queue only committed HIGH alerts for this event; never block MQTT."""
     if not WEBHOOK_URL:
         return
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
         rows = conn.execute("""
             SELECT timestamp, asset_id, sensor, reading, unit,
                    severity, recommendation, event_id, run_id, source
@@ -128,20 +131,10 @@ def notify_committed_high_alerts(event_id):
             print("Webhook queue full; alert remains saved in SQLite:", event_id)
 
 
-AI4I_FEATURES = [
-    "air_temperature",
-    "process_temperature",
-    "rotational_speed",
-    "torque",
-    "tool_wear",
-    "type_L",
-    "type_M",
-    "type_H",
-    "temperature_difference",
-    "torque_speed",
-]
+AI4I_FEATURES = LEGACY_FEATURES
 
 RECOMMENDATIONS = {
+    "maintenance": "Schedule an inspection of bearings, cooling and motor load.",
     "temperature": "Inspect cooling system and check for overheating.",
     "vibration": "Inspect rotating equipment, bearings and alignment.",
     "humidity": "Check humidity sensor calibration and moisture levels.",
@@ -170,7 +163,9 @@ def ensure_columns(conn, table_name, column_definitions):
 def create_database():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
+        conn.execute("PRAGMA journal_mode=WAL")
+        conn.execute("BEGIN IMMEDIATE")
         conn.execute("""
             CREATE TABLE IF NOT EXISTS sensor_readings (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -240,6 +235,24 @@ def create_database():
             )
         """)
 
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS anomaly_events (
+                reading_id INTEGER NOT NULL REFERENCES sensor_readings(id),
+                sensor TEXT NOT NULL,
+                category TEXT NOT NULL,
+                severity TEXT NOT NULL,
+                explanation TEXT NOT NULL,
+                PRIMARY KEY (reading_id, sensor)
+            )
+        """)
+        conn.execute("""
+            CREATE TABLE IF NOT EXISTS maintenance_forecasts (
+                reading_id INTEGER PRIMARY KEY REFERENCES sensor_readings(id),
+                score REAL NOT NULL,
+                threshold REAL NOT NULL,
+                horizon_seconds INTEGER NOT NULL
+            )
+        """)
         ensure_columns(conn, "sensor_readings", {
             "asset_id": "TEXT DEFAULT 'LEGACY-UNKNOWN'",
             "source": "TEXT DEFAULT 'legacy_unknown'",
@@ -260,6 +273,8 @@ def create_database():
             "event_id": "TEXT",
             "run_id": "TEXT",
             "unit": "TEXT",
+            "category": "TEXT",
+            "explanation": "TEXT",
         })
 
         ensure_columns(conn, "predictions", {
@@ -273,6 +288,14 @@ def create_database():
             "synthetic_fields_json": "TEXT DEFAULT '[]'",
             "source_channels_json": "TEXT DEFAULT '{}'",
         })
+
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_readings_asset_id
+            ON sensor_readings(asset_id, id DESC)
+        """)
+        conn.execute("""
+            CREATE INDEX IF NOT EXISTS idx_alerts_event_id ON alerts(event_id)
+        """)
 
         conn.execute("""
             CREATE UNIQUE INDEX IF NOT EXISTS
@@ -312,12 +335,9 @@ def load_ai4i_model():
             f"AI4I model not found: {MODEL_PATH}"
         )
 
-    verify_ai4i_model(MODEL_PATH)
+    model = load_verified_ai4i_model(MODEL_PATH, BASE_DIR / "models")
 
-    with open(MODEL_PATH, "rb") as file:
-        model = pickle.load(file)
-
-    if model.get("features") != AI4I_FEATURES:
+    if model.get("features") not in (FEATURES, LEGACY_FEATURES):
         raise ValueError(
             "AI4I model feature order does not match "
             "the expected features."
@@ -330,7 +350,7 @@ def load_ai4i_model():
 
     ai4i_model = model
 
-    print("\nAI4I Random Forest model loaded.")
+    print("\nAI4I model loaded:", model["model_type"])
     print("Number of trees:", len(ai4i_model["trees"]))
     print(
         "Decision threshold:",
@@ -340,47 +360,25 @@ def load_ai4i_model():
     return ai4i_model
 
 
-def get_sensor_history(
-    cursor,
-    sensor,
-    current_id,
-    metadata,
-    units_json,
-):
-    """
-    Retrieve previous readings belonging to the same
-    asset, source, run, units and source channels.
-    """
-    cursor.execute(f"""
-        SELECT {sensor}
+def get_sensor_history(cursor, current_id, metadata, units_json):
+    """Return a chronological window for the same asset and acquisition stream."""
+    cursor.execute("""
+        SELECT temperature, vibration, humidity, pressure, current
         FROM sensor_readings
-        WHERE id < ?
-          AND asset_id = ?
-          AND source = ?
-          AND run_id = ?
-          AND units_json = ?
-          AND source_channels_json = ?
-        ORDER BY id DESC
-        LIMIT ?
+        WHERE id < ? AND asset_id = ? AND source = ? AND run_id = ?
+          AND units_json = ? AND source_channels_json = ?
+        ORDER BY id DESC LIMIT ?
     """, (
-        current_id,
-        metadata["asset_id"],
-        metadata["source"],
-        metadata["run_id"],
-        units_json,
-        json.dumps(
-            metadata["source_channels"],
-            sort_keys=True,
-            separators=(",", ":"),
-        ),
+        current_id, metadata["asset_id"], metadata["source"], metadata["run_id"],
+        units_json, json.dumps(metadata["source_channels"], sort_keys=True, separators=(",", ":")),
         WINDOW,
     ))
+    return list(reversed(cursor.fetchall()))
 
-    return [
-        row[0]
-        for row in reversed(cursor.fetchall())
-        if row[0] is not None
-    ]
+
+def score_ai4i(model, features):
+    rows = physical_features([features]) if model.get("features") == FEATURES else [features]
+    return float(predict_forest(model["trees"], rows)[0]), float(model["threshold"])
 
 
 def save_alert(
@@ -391,6 +389,9 @@ def save_alert(
     z_score,
     severity,
     metadata,
+    category,
+    explanation,
+    pending_alerts,
 ):
     """
     Preserve existing alert storage and cooldown behaviour.
@@ -426,9 +427,9 @@ def save_alert(
             schema_version,
             event_id,
             run_id,
-            unit
+            unit, category, explanation
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     """, (
         timestamp,
         sensor,
@@ -441,158 +442,62 @@ def save_alert(
         metadata["schema_version"],
         metadata["event_id"],
         metadata["run_id"],
-        metadata["units"][sensor],
+        metadata["units"].get(sensor, "%"), category, explanation,
     ))
 
-    last_alert_time[alert_key] = current_time
+    pending_alerts[alert_key] = current_time
 
     return True
 
 
-def check_anomalies(
-    conn,
-    timestamp,
-    readings,
-    current_id,
-    metadata,
-    units_json,
-):
-    """
-    Use hybrid detection for simulated sensors.
-
-    Preserve the original Z-score detector
-    for SKAB and other supported sources.
-    """
+def check_anomalies(conn, timestamp, readings, current_id, metadata, units_json):
     cursor = conn.cursor()
+    pending_alerts = {}
+    rows = get_sensor_history(cursor, current_id, metadata, units_json)
+    history = {sensor: [row[index] for row in rows if row[index] is not None]
+               for index, sensor in enumerate(SENSORS)}
+    simulator = metadata["source"] == "simulated_sensor"
 
-    # -------------------------------------------
-    # HYBRID DETECTOR: SIMULATED SENSOR DATA
-    # -------------------------------------------
-    if metadata["source"] == "simulated_sensor":
-        history = {}
+    def record(sensor, severity, category, explanation, z_score, reading):
+        cursor.execute(
+            "INSERT INTO anomaly_events VALUES (?, ?, ?, ?, ?)",
+            (current_id, sensor, category, severity, explanation),
+        )
+        save_alert(cursor, timestamp, sensor, reading, z_score, severity,
+                   metadata, category, explanation, pending_alerts)
 
-        for sensor in SENSORS:
-            history[sensor] = get_sensor_history(
-                cursor,
-                sensor,
-                current_id,
-                metadata,
-                units_json,
-            )
+    if simulator:
+        findings = detect_anomalies(history, readings)
+        for sensor, finding in findings.items():
+            reading = readings[sensor]
+            severe = (sensor == "temperature" and reading >= 60
+                      or sensor == "vibration" and reading >= 14
+                      or sensor == "pressure" and reading <= 1
+                      or sensor == "current" and reading >= 28)
+            z_score = calculate_z_score(history[sensor], reading) or 0.0
+            severity = "HIGH" if severe else "MEDIUM" if len(findings) > 1 or finding.score >= 4 else "LOW"
+            record(sensor, severity, finding.category, finding.explanation, z_score, reading)
 
-        anomalies = detect_hybrid(history, readings)
+        result = forecast((rows + [tuple(readings[sensor] for sensor in SENSORS)])[-WINDOW:])
+        if result is not None:
+            score, threshold, seconds = result
+            cursor.execute("INSERT INTO maintenance_forecasts VALUES (?, ?, ?, ?)",
+                           (current_id, score, threshold, seconds))
+            if score >= threshold:
+                explanation = f"Recent sensor levels and trends indicate degradation risk within {seconds} seconds."
+                save_alert(cursor, timestamp, "maintenance", round(score * 100, 2), 0.0,
+                           "HIGH", metadata, "degradation_forecast", explanation, pending_alerts)
+        return pending_alerts
 
-        for sensor, score in anomalies.items():
-            z_score = calculate_z_score(
-                history[sensor],
-                readings[sensor],
-            )
-
-            # Simulated-source severity combines absolute fault limits
-            # with the original Z-score severity when history is available.
-            # These thresholds are for the simulator, not industrial limits.
-            severity_rank = {"LOW": 0, "MEDIUM": 1, "HIGH": 2}
-            severity = "LOW"
-
-            if sensor == "temperature":
-                if readings[sensor] >= 60:
-                    severity = "HIGH"
-                elif readings[sensor] > 50:
-                    severity = "MEDIUM"
-            elif sensor == "vibration":
-                if readings[sensor] >= 14:
-                    severity = "HIGH"
-                elif readings[sensor] > 8:
-                    severity = "MEDIUM"
-            elif sensor == "humidity" and score >= 10:
-                severity = "MEDIUM"
-
-            if z_score is not None:
-                z_severity = classify_severity(z_score)
-                if severity_rank[z_severity] > severity_rank[severity]:
-                    severity = z_severity
-                stored_score = z_score
-            else:
-                stored_score = 0.0
-
-            saved = save_alert(
-                cursor,
-                timestamp,
-                sensor,
-                readings[sensor],
-                stored_score,
-                severity,
-                metadata,
-            )
-
-            if saved:
-                print("\nHYBRID ANOMALY DETECTED!")
-                print("Asset:", metadata["asset_id"])
-                print("Source:", metadata["source"])
-                print("Sensor:", sensor.upper())
-                print("Reading:", readings[sensor])
-                print("Hybrid score:", round(score, 2))
-                print("Severity:", severity)
-                print("Recommendation:", RECOMMENDATIONS[sensor])
-                print("-" * 50)
-
-        return
-
-    # -------------------------------------------
-    # ORIGINAL Z-SCORE DETECTOR: OTHER SOURCES
-    # -------------------------------------------
     for sensor in SENSORS:
-        if (
-            metadata["source"] == "skab_replay"
-            and sensor in metadata["synthetic_fields"]
-        ):
+        if metadata["source"] == "skab_replay" and sensor in metadata["synthetic_fields"]:
             continue
-
-        history = get_sensor_history(
-            cursor,
-            sensor,
-            current_id,
-            metadata,
-            units_json,
-        )
-
-        z_score = calculate_z_score(
-            history,
-            readings[sensor],
-        )
-
-        if z_score is None:
-            continue
-
-        if abs(z_score) <= Z_THRESHOLD:
-            continue
-
-        severity = classify_severity(z_score)
-
-        saved = save_alert(
-            cursor,
-            timestamp,
-            sensor,
-            readings[sensor],
-            z_score,
-            severity,
-            metadata,
-        )
-
-        if saved:
-            print("\nANOMALY DETECTED!")
-            print("Asset:", metadata["asset_id"])
-            print("Source:", metadata["source"])
-            print("Sensor:", sensor.upper())
-            print(
-                "Reading:",
-                readings[sensor],
-                metadata["units"][sensor],
-            )
-            print("Z-score:", round(z_score, 2))
-            print("Severity:", severity)
-            print("Recommendation:", RECOMMENDATIONS[sensor])
-            print("-" * 50)
+        score = calculate_z_score(history[sensor], readings[sensor])
+        if score is not None and abs(score) > Z_THRESHOLD:
+            record(sensor, classify_severity(score), "statistical_deviation",
+                   f"Reading is {abs(score):.1f} standard deviations from its recent mean.",
+                   score, readings[sensor])
+    return pending_alerts
 
 
 def process_sensor_message(data):
@@ -625,11 +530,15 @@ def process_sensor_message(data):
                 f"Invalid numeric value for {sensor}."
             ) from error
 
-        if not math.isfinite(value):
+        if isinstance(readings[sensor], bool) or not math.isfinite(value):
             raise ValueError(
-                f"Non-finite {sensor} reading."
+                f"Invalid finite numeric {sensor} reading."
             )
 
+        if (source == "simulated_sensor" and
+            (sensor == "humidity" and not 0 <= value <= 100
+             or sensor in {"vibration", "pressure", "current"} and value < 0)):
+            raise ValueError(f"Out-of-range {sensor} reading.")
         numeric_readings[sensor] = value
 
     actual_anomaly = data.get("actual_anomaly")
@@ -671,7 +580,7 @@ def process_sensor_message(data):
         separators=(",", ":"),
     )
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -722,7 +631,7 @@ def process_sensor_message(data):
 
         current_id = cursor.lastrowid
 
-        check_anomalies(
+        pending_alerts = check_anomalies(
             conn,
             data["timestamp"],
             numeric_readings,
@@ -731,7 +640,13 @@ def process_sensor_message(data):
             units_json,
         )
 
-    # The database transaction has committed at this point.
+    # Advance the alert cooldown only after SQLite commits the event and alerts.
+    if pending_alerts:
+        oldest = time.monotonic() - ALERT_COOLDOWN
+        for key, sent_at in list(last_alert_time.items()):
+            if sent_at <= oldest:
+                del last_alert_time[key]
+        last_alert_time.update(pending_alerts)
     notify_committed_high_alerts(data["event_id"])
 
     print(
@@ -824,30 +739,8 @@ def process_ai4i_message(data):
     torque = numeric["torque"]
     wear = numeric["tool_wear"]
 
-    features = [
-        air,
-        process,
-        speed,
-        torque,
-        wear,
-        1 if machine_type == "L" else 0,
-        1 if machine_type == "M" else 0,
-        1 if machine_type == "H" else 0,
-        process - air,
-        torque * speed / 1000,
-    ]
-
-    failure_score = float(
-        predict_forest(
-            model["trees"],
-            [features],
-        )[0]
-    )
-
-    threshold = round(
-        float(model["threshold"]),
-        2,
-    )
+    features = operating_features(air, process, speed, torque, wear, machine_type)
+    failure_score, threshold = score_ai4i(model, features)
 
     predicted_failure = (
         1 if failure_score >= threshold else 0
@@ -874,7 +767,7 @@ def process_ai4i_message(data):
         separators=(",", ":"),
     )
 
-    with sqlite3.connect(DB_PATH) as conn:
+    with closing(sqlite3.connect(DB_PATH)) as conn, conn:
         cursor = conn.cursor()
 
         cursor.execute("""
@@ -996,6 +889,18 @@ def on_connect(
         )
 
 
+def on_subscribe(client, userdata, mid, reason_codes, properties):
+    if any(code.is_failure for code in reason_codes):
+        raise RuntimeError("The broker refused the consumer subscriptions.")
+    if READY:
+        READY.touch()
+
+
+def on_disconnect(client, userdata, disconnect_flags, reason_code, properties):
+    if READY:
+        READY.unlink(missing_ok=True)
+
+
 def on_message(client, userdata, msg):
     try:
         data = json.loads(
@@ -1026,11 +931,8 @@ def on_message(client, userdata, msg):
             f"from {msg.topic}: {error}"
         )
 
-    except Exception as error:
-        print(
-            f"Unexpected error processing "
-            f"message from {msg.topic}: {error}"
-        )
+    if msg.qos:
+        client.ack(msg.mid, msg.qos)
 
 
 def main():
@@ -1044,12 +946,19 @@ def main():
     else:
         print("Webhook notifications disabled (no URL configured)")
 
+    if READY:
+        READY.unlink(missing_ok=True)
     client = mqtt.Client(
-        callback_api_version=mqtt.CallbackAPIVersion.VERSION2
+        callback_api_version=mqtt.CallbackAPIVersion.VERSION2,
+        client_id=os.getenv("MQTT_CONSUMER_CLIENT_ID", "iot-maintenance-consumer"),
+        clean_session=False,
+        manual_ack=True,
     )
 
     client.on_connect = on_connect
     client.on_message = on_message
+    client.on_subscribe = on_subscribe
+    client.on_disconnect = on_disconnect
 
     print("MQTT Consumer Started")
     print("Hybrid Anomaly Detection Enabled")
@@ -1073,24 +982,14 @@ def main():
     )
 
     try:
-        configure_mqtt_auth(
-            client,
-            "consumer",
-        )
-
-        client.connect(
-            BROKER,
-            PORT,
-            60,
-        )
-
-        client.loop_forever()
+        connect_configured(client, "consumer", asynchronous=True)
+        client.loop_forever(retry_first_connection=True)
 
     except KeyboardInterrupt:
         print("\nConsumer stopped.")
 
     except Exception as error:
-        print("Error:", error)
+        raise RuntimeError("MQTT consumer stopped unexpectedly") from error
 
     finally:
         client.disconnect()

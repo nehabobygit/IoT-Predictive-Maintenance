@@ -3,6 +3,8 @@
 from datetime import datetime, timezone
 import uuid
 
+from messaging.asset_registry import ASSETS
+
 SCHEMA_VERSION = "1.0"
 
 SENSOR_UNITS = {
@@ -28,11 +30,6 @@ AI4I_UNITS = {
     "rotational_speed": "rpm",
     "torque": "Nm",
     "tool_wear": "min",
-}
-
-EXPECTED_ASSETS = {
-    "simulated_sensor": "SIM-MOTOR-001",
-    "skab_replay": "SKAB-VALVE1",
 }
 
 EXPECTED_MESSAGE_TYPES = {
@@ -154,10 +151,9 @@ def validate_metadata(data, *, expected_source=None):
         raise ValueError("source_channels must be a non-empty object.")
 
     asset_id = data["asset_id"]
-    if source in EXPECTED_ASSETS:
-        expected_asset = EXPECTED_ASSETS[source]
-        if asset_id != expected_asset:
-            raise ValueError(f"Source '{source}' must use asset_id '{expected_asset}'.")
+    if source in SENSOR_UNITS:
+        if not isinstance(asset_id, str) or ASSETS.get(asset_id, {}).get("source") != source:
+            raise ValueError("Asset is not registered for the declared source.")
     elif source == "ai4i_replay" and asset_id is not None:
         raise ValueError("AI4I replay records do not contain a physical asset ID; asset_id must be null.")
 
